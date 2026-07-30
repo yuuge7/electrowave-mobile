@@ -68,7 +68,15 @@ Non-obvious constraints — breaking these produces bugs that only show up after
 - **`android/gradle.properties` must keep `android.builtInKotlin=false`**, and file_picker stays pinned to 10.x: 11.x requires built-in Kotlin while audio_service and others still apply the external Kotlin plugin, and mixing them fails the Gradle build.
 - **Import collisions**: media_kit exports its own `Track` — import it with `hide Track` where the drift `Track` is in scope. Flutter's material library exports `RepeatMode`, so `now_playing_screen.dart` imports material with `hide RepeatMode`.
 - **Bootstrap order** in `main.dart`: MediaKit init → staged backup import (must precede opening the DB) → `AppDatabase` → `AudioService.init` → `ProviderScope` overrides.
-- **Release signing**: keystore at `android/app/electrowave-release.jks` plus `android/key.properties`, both gitignored. Builds fall back to the debug key when `key.properties` is absent; CI restores both from GitHub secrets (`.github/workflows/release.yml`).
+- **Release signing**: keystore at `android/app/electrowave-release.jks` (PKCS12, alias `electrowave`) plus `android/key.properties`, both gitignored. Builds fall back to the debug key when `key.properties` is absent — so a local `flutter build apk --release` succeeding does **not** prove the release key works.
+
+  CI restores both from the `KEYSTORE_BASE64` and `KEYSTORE_PASSWORD` secrets. To regenerate `KEYSTORE_BASE64` (single line, no wrapping, straight to the clipboard so it never lands in a file or shell history):
+
+  ```powershell
+  [Convert]::ToBase64String([IO.File]::ReadAllBytes("android\app\electrowave-release.jks")) | Set-Clipboard
+  ```
+
+  Paste that as the secret value. Do **not** use `certutil -encode`: it wraps the output in `-----BEGIN CERTIFICATE-----` lines, which `base64 -d` rejects. The workflow verifies the restored keystore with `keytool` and prints its size and SHA-256, so a mismatch fails at the restore step with a readable message instead of surfacing as a DER/ASN.1 parse error (`Tag number over 30 is not supported`) inside `:app:packageRelease`.
 - Run `dart run build_runner build` after editing the drift schema in `lib/core/database/database.dart`. The schema is at **v2**; `MigrationStrategy` adds `isFavorite`, `trackNumber`, `discNumber` and `year`, so existing installs upgrade in place.
 - **EQ and ReplayGain run inside libmpv, not Android.** media_kit doesn't expose the Android audio session id, so the platform `AudioEffect` API (Equalizer/BassBoost) is unreachable. `applyAudioSettings` builds an mpv `af` chain of `equalizer` filters and sets mpv's own `replaygain` property instead — same behaviour on every platform, no session id needed.
 - Playback speed must be re-applied after every `Player.open()`; mpv resets it per file. The handler keeps `_desiredRate` for exactly that.

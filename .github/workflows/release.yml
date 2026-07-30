@@ -29,14 +29,50 @@ jobs:
         run: echo "version=1.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
       - name: Restore signing config
+        env:
+          # Passed as env rather than inlined into the script: keeps secret
+          # values out of the generated shell source.
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/electrowave-release.jks
+          set -euo pipefail
+
+          if [ -z "${KEYSTORE_BASE64:-}" ]; then
+            echo "::error::KEYSTORE_BASE64 secret is empty or unset"
+            exit 1
+          fi
+          if [ -z "${KEYSTORE_PASSWORD:-}" ]; then
+            echo "::error::KEYSTORE_PASSWORD secret is empty or unset"
+            exit 1
+          fi
+
+          # Tolerate wrapped base64 and CRLF, which `base64 -d` rejects outright.
+          printf '%s' "$KEYSTORE_BASE64" | tr -d '\r\n \t' \
+            | base64 -d > android/app/electrowave-release.jks
+
           {
-            echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}"
-            echo "keyPassword=${{ secrets.KEYSTORE_PASSWORD }}"
+            echo "storePassword=$KEYSTORE_PASSWORD"
+            echo "keyPassword=$KEYSTORE_PASSWORD"
             echo "keyAlias=electrowave"
             echo "storeFile=electrowave-release.jks"
           } > android/key.properties
+
+          # Verify here, where the message is readable. Without this a bad
+          # secret only surfaces as a DER/ASN.1 parse error inside
+          # :app:packageRelease, which says nothing about the real cause.
+          echo "restored keystore: $(stat -c%s android/app/electrowave-release.jks) bytes"
+          echo "sha256: $(sha256sum android/app/electrowave-release.jks | cut -d' ' -f1)"
+          echo "expected: 2626 bytes, sha256 b051c3dd3a2c1420a8c69a5ece11cb6e9653f1d000bbdc1209cfae048488c43d"
+
+          if ! keytool -list -keystore android/app/electrowave-release.jks \
+                -storepass "$KEYSTORE_PASSWORD" -alias electrowave \
+                > /dev/null 2> keytool-error.log; then
+            echo "::error::Restored keystore is unreadable — the KEYSTORE_BASE64 secret does not contain the bytes of the release keystore. Regenerate it (see README 'Release signing')."
+            # Scrub the password in case keytool echoed the command line.
+            sed -e "s|${KEYSTORE_PASSWORD}|***|g" keytool-error.log || true
+            exit 1
+          fi
+          echo "Keystore verified: alias 'electrowave' is readable."
 
       - name: Install dependencies
         run: flutter pub get
