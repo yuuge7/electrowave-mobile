@@ -8,12 +8,16 @@ import '../../../core/database/database.dart';
 import '../../../core/database/database_provider.dart';
 import '../services/library_scanner.dart';
 import '../services/permission_service.dart';
+import '../services/tag_writer.dart';
 
 final permissionServiceProvider =
     Provider<PermissionService>((ref) => PermissionService());
 
 final libraryScannerProvider = Provider<LibraryScanner>(
     (ref) => LibraryScanner(ref.watch(databaseProvider)));
+
+final tagWriterProvider =
+    Provider<TagWriter>((ref) => TagWriter(ref.watch(databaseProvider)));
 
 final librarySearchProvider = StateProvider<String>((ref) => '');
 

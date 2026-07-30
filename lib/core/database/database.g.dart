@@ -91,6 +91,37 @@ class $TracksTable extends Tracks with TableInfo<$TracksTable, Track> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _trackNumberMeta = const VerificationMeta(
+    'trackNumber',
+  );
+  @override
+  late final GeneratedColumn<int> trackNumber = GeneratedColumn<int>(
+    'track_number',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _discNumberMeta = const VerificationMeta(
+    'discNumber',
+  );
+  @override
+  late final GeneratedColumn<int> discNumber = GeneratedColumn<int>(
+    'disc_number',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _yearMeta = const VerificationMeta('year');
+  @override
+  late final GeneratedColumn<int> year = GeneratedColumn<int>(
+    'year',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _dateAddedMeta = const VerificationMeta(
     'dateAdded',
   );
@@ -141,6 +172,21 @@ class $TracksTable extends Tracks with TableInfo<$TracksTable, Track> {
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _isFavoriteMeta = const VerificationMeta(
+    'isFavorite',
+  );
+  @override
+  late final GeneratedColumn<bool> isFavorite = GeneratedColumn<bool>(
+    'is_favorite',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_favorite" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -151,10 +197,14 @@ class $TracksTable extends Tracks with TableInfo<$TracksTable, Track> {
     durationMs,
     genre,
     albumArtPath,
+    trackNumber,
+    discNumber,
+    year,
     dateAdded,
     totalPlayCount,
     lastPlayed,
     isDeleted,
+    isFavorite,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -226,6 +276,27 @@ class $TracksTable extends Tracks with TableInfo<$TracksTable, Track> {
         ),
       );
     }
+    if (data.containsKey('track_number')) {
+      context.handle(
+        _trackNumberMeta,
+        trackNumber.isAcceptableOrUnknown(
+          data['track_number']!,
+          _trackNumberMeta,
+        ),
+      );
+    }
+    if (data.containsKey('disc_number')) {
+      context.handle(
+        _discNumberMeta,
+        discNumber.isAcceptableOrUnknown(data['disc_number']!, _discNumberMeta),
+      );
+    }
+    if (data.containsKey('year')) {
+      context.handle(
+        _yearMeta,
+        year.isAcceptableOrUnknown(data['year']!, _yearMeta),
+      );
+    }
     if (data.containsKey('date_added')) {
       context.handle(
         _dateAddedMeta,
@@ -251,6 +322,12 @@ class $TracksTable extends Tracks with TableInfo<$TracksTable, Track> {
       context.handle(
         _isDeletedMeta,
         isDeleted.isAcceptableOrUnknown(data['is_deleted']!, _isDeletedMeta),
+      );
+    }
+    if (data.containsKey('is_favorite')) {
+      context.handle(
+        _isFavoriteMeta,
+        isFavorite.isAcceptableOrUnknown(data['is_favorite']!, _isFavoriteMeta),
       );
     }
     return context;
@@ -294,6 +371,18 @@ class $TracksTable extends Tracks with TableInfo<$TracksTable, Track> {
         DriftSqlType.string,
         data['${effectivePrefix}album_art_path'],
       ),
+      trackNumber: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}track_number'],
+      ),
+      discNumber: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}disc_number'],
+      ),
+      year: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}year'],
+      ),
       dateAdded: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}date_added'],
@@ -309,6 +398,10 @@ class $TracksTable extends Tracks with TableInfo<$TracksTable, Track> {
       isDeleted: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}is_deleted'],
+      )!,
+      isFavorite: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_favorite'],
       )!,
     );
   }
@@ -328,10 +421,14 @@ class Track extends DataClass implements Insertable<Track> {
   final int durationMs;
   final String? genre;
   final String? albumArtPath;
+  final int? trackNumber;
+  final int? discNumber;
+  final int? year;
   final DateTime dateAdded;
   final int totalPlayCount;
   final DateTime? lastPlayed;
   final bool isDeleted;
+  final bool isFavorite;
   const Track({
     required this.id,
     required this.filePath,
@@ -341,10 +438,14 @@ class Track extends DataClass implements Insertable<Track> {
     required this.durationMs,
     this.genre,
     this.albumArtPath,
+    this.trackNumber,
+    this.discNumber,
+    this.year,
     required this.dateAdded,
     required this.totalPlayCount,
     this.lastPlayed,
     required this.isDeleted,
+    required this.isFavorite,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -361,12 +462,22 @@ class Track extends DataClass implements Insertable<Track> {
     if (!nullToAbsent || albumArtPath != null) {
       map['album_art_path'] = Variable<String>(albumArtPath);
     }
+    if (!nullToAbsent || trackNumber != null) {
+      map['track_number'] = Variable<int>(trackNumber);
+    }
+    if (!nullToAbsent || discNumber != null) {
+      map['disc_number'] = Variable<int>(discNumber);
+    }
+    if (!nullToAbsent || year != null) {
+      map['year'] = Variable<int>(year);
+    }
     map['date_added'] = Variable<DateTime>(dateAdded);
     map['total_play_count'] = Variable<int>(totalPlayCount);
     if (!nullToAbsent || lastPlayed != null) {
       map['last_played'] = Variable<DateTime>(lastPlayed);
     }
     map['is_deleted'] = Variable<bool>(isDeleted);
+    map['is_favorite'] = Variable<bool>(isFavorite);
     return map;
   }
 
@@ -384,12 +495,20 @@ class Track extends DataClass implements Insertable<Track> {
       albumArtPath: albumArtPath == null && nullToAbsent
           ? const Value.absent()
           : Value(albumArtPath),
+      trackNumber: trackNumber == null && nullToAbsent
+          ? const Value.absent()
+          : Value(trackNumber),
+      discNumber: discNumber == null && nullToAbsent
+          ? const Value.absent()
+          : Value(discNumber),
+      year: year == null && nullToAbsent ? const Value.absent() : Value(year),
       dateAdded: Value(dateAdded),
       totalPlayCount: Value(totalPlayCount),
       lastPlayed: lastPlayed == null && nullToAbsent
           ? const Value.absent()
           : Value(lastPlayed),
       isDeleted: Value(isDeleted),
+      isFavorite: Value(isFavorite),
     );
   }
 
@@ -407,10 +526,14 @@ class Track extends DataClass implements Insertable<Track> {
       durationMs: serializer.fromJson<int>(json['durationMs']),
       genre: serializer.fromJson<String?>(json['genre']),
       albumArtPath: serializer.fromJson<String?>(json['albumArtPath']),
+      trackNumber: serializer.fromJson<int?>(json['trackNumber']),
+      discNumber: serializer.fromJson<int?>(json['discNumber']),
+      year: serializer.fromJson<int?>(json['year']),
       dateAdded: serializer.fromJson<DateTime>(json['dateAdded']),
       totalPlayCount: serializer.fromJson<int>(json['totalPlayCount']),
       lastPlayed: serializer.fromJson<DateTime?>(json['lastPlayed']),
       isDeleted: serializer.fromJson<bool>(json['isDeleted']),
+      isFavorite: serializer.fromJson<bool>(json['isFavorite']),
     );
   }
   @override
@@ -425,10 +548,14 @@ class Track extends DataClass implements Insertable<Track> {
       'durationMs': serializer.toJson<int>(durationMs),
       'genre': serializer.toJson<String?>(genre),
       'albumArtPath': serializer.toJson<String?>(albumArtPath),
+      'trackNumber': serializer.toJson<int?>(trackNumber),
+      'discNumber': serializer.toJson<int?>(discNumber),
+      'year': serializer.toJson<int?>(year),
       'dateAdded': serializer.toJson<DateTime>(dateAdded),
       'totalPlayCount': serializer.toJson<int>(totalPlayCount),
       'lastPlayed': serializer.toJson<DateTime?>(lastPlayed),
       'isDeleted': serializer.toJson<bool>(isDeleted),
+      'isFavorite': serializer.toJson<bool>(isFavorite),
     };
   }
 
@@ -441,10 +568,14 @@ class Track extends DataClass implements Insertable<Track> {
     int? durationMs,
     Value<String?> genre = const Value.absent(),
     Value<String?> albumArtPath = const Value.absent(),
+    Value<int?> trackNumber = const Value.absent(),
+    Value<int?> discNumber = const Value.absent(),
+    Value<int?> year = const Value.absent(),
     DateTime? dateAdded,
     int? totalPlayCount,
     Value<DateTime?> lastPlayed = const Value.absent(),
     bool? isDeleted,
+    bool? isFavorite,
   }) => Track(
     id: id ?? this.id,
     filePath: filePath ?? this.filePath,
@@ -454,10 +585,14 @@ class Track extends DataClass implements Insertable<Track> {
     durationMs: durationMs ?? this.durationMs,
     genre: genre.present ? genre.value : this.genre,
     albumArtPath: albumArtPath.present ? albumArtPath.value : this.albumArtPath,
+    trackNumber: trackNumber.present ? trackNumber.value : this.trackNumber,
+    discNumber: discNumber.present ? discNumber.value : this.discNumber,
+    year: year.present ? year.value : this.year,
     dateAdded: dateAdded ?? this.dateAdded,
     totalPlayCount: totalPlayCount ?? this.totalPlayCount,
     lastPlayed: lastPlayed.present ? lastPlayed.value : this.lastPlayed,
     isDeleted: isDeleted ?? this.isDeleted,
+    isFavorite: isFavorite ?? this.isFavorite,
   );
   Track copyWithCompanion(TracksCompanion data) {
     return Track(
@@ -473,6 +608,13 @@ class Track extends DataClass implements Insertable<Track> {
       albumArtPath: data.albumArtPath.present
           ? data.albumArtPath.value
           : this.albumArtPath,
+      trackNumber: data.trackNumber.present
+          ? data.trackNumber.value
+          : this.trackNumber,
+      discNumber: data.discNumber.present
+          ? data.discNumber.value
+          : this.discNumber,
+      year: data.year.present ? data.year.value : this.year,
       dateAdded: data.dateAdded.present ? data.dateAdded.value : this.dateAdded,
       totalPlayCount: data.totalPlayCount.present
           ? data.totalPlayCount.value
@@ -481,6 +623,9 @@ class Track extends DataClass implements Insertable<Track> {
           ? data.lastPlayed.value
           : this.lastPlayed,
       isDeleted: data.isDeleted.present ? data.isDeleted.value : this.isDeleted,
+      isFavorite: data.isFavorite.present
+          ? data.isFavorite.value
+          : this.isFavorite,
     );
   }
 
@@ -495,10 +640,14 @@ class Track extends DataClass implements Insertable<Track> {
           ..write('durationMs: $durationMs, ')
           ..write('genre: $genre, ')
           ..write('albumArtPath: $albumArtPath, ')
+          ..write('trackNumber: $trackNumber, ')
+          ..write('discNumber: $discNumber, ')
+          ..write('year: $year, ')
           ..write('dateAdded: $dateAdded, ')
           ..write('totalPlayCount: $totalPlayCount, ')
           ..write('lastPlayed: $lastPlayed, ')
-          ..write('isDeleted: $isDeleted')
+          ..write('isDeleted: $isDeleted, ')
+          ..write('isFavorite: $isFavorite')
           ..write(')'))
         .toString();
   }
@@ -513,10 +662,14 @@ class Track extends DataClass implements Insertable<Track> {
     durationMs,
     genre,
     albumArtPath,
+    trackNumber,
+    discNumber,
+    year,
     dateAdded,
     totalPlayCount,
     lastPlayed,
     isDeleted,
+    isFavorite,
   );
   @override
   bool operator ==(Object other) =>
@@ -530,10 +683,14 @@ class Track extends DataClass implements Insertable<Track> {
           other.durationMs == this.durationMs &&
           other.genre == this.genre &&
           other.albumArtPath == this.albumArtPath &&
+          other.trackNumber == this.trackNumber &&
+          other.discNumber == this.discNumber &&
+          other.year == this.year &&
           other.dateAdded == this.dateAdded &&
           other.totalPlayCount == this.totalPlayCount &&
           other.lastPlayed == this.lastPlayed &&
-          other.isDeleted == this.isDeleted);
+          other.isDeleted == this.isDeleted &&
+          other.isFavorite == this.isFavorite);
 }
 
 class TracksCompanion extends UpdateCompanion<Track> {
@@ -545,10 +702,14 @@ class TracksCompanion extends UpdateCompanion<Track> {
   final Value<int> durationMs;
   final Value<String?> genre;
   final Value<String?> albumArtPath;
+  final Value<int?> trackNumber;
+  final Value<int?> discNumber;
+  final Value<int?> year;
   final Value<DateTime> dateAdded;
   final Value<int> totalPlayCount;
   final Value<DateTime?> lastPlayed;
   final Value<bool> isDeleted;
+  final Value<bool> isFavorite;
   const TracksCompanion({
     this.id = const Value.absent(),
     this.filePath = const Value.absent(),
@@ -558,10 +719,14 @@ class TracksCompanion extends UpdateCompanion<Track> {
     this.durationMs = const Value.absent(),
     this.genre = const Value.absent(),
     this.albumArtPath = const Value.absent(),
+    this.trackNumber = const Value.absent(),
+    this.discNumber = const Value.absent(),
+    this.year = const Value.absent(),
     this.dateAdded = const Value.absent(),
     this.totalPlayCount = const Value.absent(),
     this.lastPlayed = const Value.absent(),
     this.isDeleted = const Value.absent(),
+    this.isFavorite = const Value.absent(),
   });
   TracksCompanion.insert({
     this.id = const Value.absent(),
@@ -572,10 +737,14 @@ class TracksCompanion extends UpdateCompanion<Track> {
     required int durationMs,
     this.genre = const Value.absent(),
     this.albumArtPath = const Value.absent(),
+    this.trackNumber = const Value.absent(),
+    this.discNumber = const Value.absent(),
+    this.year = const Value.absent(),
     this.dateAdded = const Value.absent(),
     this.totalPlayCount = const Value.absent(),
     this.lastPlayed = const Value.absent(),
     this.isDeleted = const Value.absent(),
+    this.isFavorite = const Value.absent(),
   }) : filePath = Value(filePath),
        title = Value(title),
        artist = Value(artist),
@@ -590,10 +759,14 @@ class TracksCompanion extends UpdateCompanion<Track> {
     Expression<int>? durationMs,
     Expression<String>? genre,
     Expression<String>? albumArtPath,
+    Expression<int>? trackNumber,
+    Expression<int>? discNumber,
+    Expression<int>? year,
     Expression<DateTime>? dateAdded,
     Expression<int>? totalPlayCount,
     Expression<DateTime>? lastPlayed,
     Expression<bool>? isDeleted,
+    Expression<bool>? isFavorite,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -604,10 +777,14 @@ class TracksCompanion extends UpdateCompanion<Track> {
       if (durationMs != null) 'duration_ms': durationMs,
       if (genre != null) 'genre': genre,
       if (albumArtPath != null) 'album_art_path': albumArtPath,
+      if (trackNumber != null) 'track_number': trackNumber,
+      if (discNumber != null) 'disc_number': discNumber,
+      if (year != null) 'year': year,
       if (dateAdded != null) 'date_added': dateAdded,
       if (totalPlayCount != null) 'total_play_count': totalPlayCount,
       if (lastPlayed != null) 'last_played': lastPlayed,
       if (isDeleted != null) 'is_deleted': isDeleted,
+      if (isFavorite != null) 'is_favorite': isFavorite,
     });
   }
 
@@ -620,10 +797,14 @@ class TracksCompanion extends UpdateCompanion<Track> {
     Value<int>? durationMs,
     Value<String?>? genre,
     Value<String?>? albumArtPath,
+    Value<int?>? trackNumber,
+    Value<int?>? discNumber,
+    Value<int?>? year,
     Value<DateTime>? dateAdded,
     Value<int>? totalPlayCount,
     Value<DateTime?>? lastPlayed,
     Value<bool>? isDeleted,
+    Value<bool>? isFavorite,
   }) {
     return TracksCompanion(
       id: id ?? this.id,
@@ -634,10 +815,14 @@ class TracksCompanion extends UpdateCompanion<Track> {
       durationMs: durationMs ?? this.durationMs,
       genre: genre ?? this.genre,
       albumArtPath: albumArtPath ?? this.albumArtPath,
+      trackNumber: trackNumber ?? this.trackNumber,
+      discNumber: discNumber ?? this.discNumber,
+      year: year ?? this.year,
       dateAdded: dateAdded ?? this.dateAdded,
       totalPlayCount: totalPlayCount ?? this.totalPlayCount,
       lastPlayed: lastPlayed ?? this.lastPlayed,
       isDeleted: isDeleted ?? this.isDeleted,
+      isFavorite: isFavorite ?? this.isFavorite,
     );
   }
 
@@ -668,6 +853,15 @@ class TracksCompanion extends UpdateCompanion<Track> {
     if (albumArtPath.present) {
       map['album_art_path'] = Variable<String>(albumArtPath.value);
     }
+    if (trackNumber.present) {
+      map['track_number'] = Variable<int>(trackNumber.value);
+    }
+    if (discNumber.present) {
+      map['disc_number'] = Variable<int>(discNumber.value);
+    }
+    if (year.present) {
+      map['year'] = Variable<int>(year.value);
+    }
     if (dateAdded.present) {
       map['date_added'] = Variable<DateTime>(dateAdded.value);
     }
@@ -679,6 +873,9 @@ class TracksCompanion extends UpdateCompanion<Track> {
     }
     if (isDeleted.present) {
       map['is_deleted'] = Variable<bool>(isDeleted.value);
+    }
+    if (isFavorite.present) {
+      map['is_favorite'] = Variable<bool>(isFavorite.value);
     }
     return map;
   }
@@ -694,10 +891,14 @@ class TracksCompanion extends UpdateCompanion<Track> {
           ..write('durationMs: $durationMs, ')
           ..write('genre: $genre, ')
           ..write('albumArtPath: $albumArtPath, ')
+          ..write('trackNumber: $trackNumber, ')
+          ..write('discNumber: $discNumber, ')
+          ..write('year: $year, ')
           ..write('dateAdded: $dateAdded, ')
           ..write('totalPlayCount: $totalPlayCount, ')
           ..write('lastPlayed: $lastPlayed, ')
-          ..write('isDeleted: $isDeleted')
+          ..write('isDeleted: $isDeleted, ')
+          ..write('isFavorite: $isFavorite')
           ..write(')'))
         .toString();
   }
@@ -1507,10 +1708,14 @@ typedef $$TracksTableCreateCompanionBuilder =
       required int durationMs,
       Value<String?> genre,
       Value<String?> albumArtPath,
+      Value<int?> trackNumber,
+      Value<int?> discNumber,
+      Value<int?> year,
       Value<DateTime> dateAdded,
       Value<int> totalPlayCount,
       Value<DateTime?> lastPlayed,
       Value<bool> isDeleted,
+      Value<bool> isFavorite,
     });
 typedef $$TracksTableUpdateCompanionBuilder =
     TracksCompanion Function({
@@ -1522,10 +1727,14 @@ typedef $$TracksTableUpdateCompanionBuilder =
       Value<int> durationMs,
       Value<String?> genre,
       Value<String?> albumArtPath,
+      Value<int?> trackNumber,
+      Value<int?> discNumber,
+      Value<int?> year,
       Value<DateTime> dateAdded,
       Value<int> totalPlayCount,
       Value<DateTime?> lastPlayed,
       Value<bool> isDeleted,
+      Value<bool> isFavorite,
     });
 
 final class $$TracksTableReferences
@@ -1620,6 +1829,21 @@ class $$TracksTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<int> get trackNumber => $composableBuilder(
+    column: $table.trackNumber,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get discNumber => $composableBuilder(
+    column: $table.discNumber,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get year => $composableBuilder(
+    column: $table.year,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<DateTime> get dateAdded => $composableBuilder(
     column: $table.dateAdded,
     builder: (column) => ColumnFilters(column),
@@ -1637,6 +1861,11 @@ class $$TracksTableFilterComposer
 
   ColumnFilters<bool> get isDeleted => $composableBuilder(
     column: $table.isDeleted,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isFavorite => $composableBuilder(
+    column: $table.isFavorite,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1740,6 +1969,21 @@ class $$TracksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get trackNumber => $composableBuilder(
+    column: $table.trackNumber,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get discNumber => $composableBuilder(
+    column: $table.discNumber,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get year => $composableBuilder(
+    column: $table.year,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get dateAdded => $composableBuilder(
     column: $table.dateAdded,
     builder: (column) => ColumnOrderings(column),
@@ -1757,6 +2001,11 @@ class $$TracksTableOrderingComposer
 
   ColumnOrderings<bool> get isDeleted => $composableBuilder(
     column: $table.isDeleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isFavorite => $composableBuilder(
+    column: $table.isFavorite,
     builder: (column) => ColumnOrderings(column),
   );
 }
@@ -1798,6 +2047,19 @@ class $$TracksTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<int> get trackNumber => $composableBuilder(
+    column: $table.trackNumber,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get discNumber => $composableBuilder(
+    column: $table.discNumber,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get year =>
+      $composableBuilder(column: $table.year, builder: (column) => column);
+
   GeneratedColumn<DateTime> get dateAdded =>
       $composableBuilder(column: $table.dateAdded, builder: (column) => column);
 
@@ -1813,6 +2075,11 @@ class $$TracksTableAnnotationComposer
 
   GeneratedColumn<bool> get isDeleted =>
       $composableBuilder(column: $table.isDeleted, builder: (column) => column);
+
+  GeneratedColumn<bool> get isFavorite => $composableBuilder(
+    column: $table.isFavorite,
+    builder: (column) => column,
+  );
 
   Expression<T> playbackHistoryRefs<T extends Object>(
     Expression<T> Function($$PlaybackHistoryTableAnnotationComposer a) f,
@@ -1904,10 +2171,14 @@ class $$TracksTableTableManager
                 Value<int> durationMs = const Value.absent(),
                 Value<String?> genre = const Value.absent(),
                 Value<String?> albumArtPath = const Value.absent(),
+                Value<int?> trackNumber = const Value.absent(),
+                Value<int?> discNumber = const Value.absent(),
+                Value<int?> year = const Value.absent(),
                 Value<DateTime> dateAdded = const Value.absent(),
                 Value<int> totalPlayCount = const Value.absent(),
                 Value<DateTime?> lastPlayed = const Value.absent(),
                 Value<bool> isDeleted = const Value.absent(),
+                Value<bool> isFavorite = const Value.absent(),
               }) => TracksCompanion(
                 id: id,
                 filePath: filePath,
@@ -1917,10 +2188,14 @@ class $$TracksTableTableManager
                 durationMs: durationMs,
                 genre: genre,
                 albumArtPath: albumArtPath,
+                trackNumber: trackNumber,
+                discNumber: discNumber,
+                year: year,
                 dateAdded: dateAdded,
                 totalPlayCount: totalPlayCount,
                 lastPlayed: lastPlayed,
                 isDeleted: isDeleted,
+                isFavorite: isFavorite,
               ),
           createCompanionCallback:
               ({
@@ -1932,10 +2207,14 @@ class $$TracksTableTableManager
                 required int durationMs,
                 Value<String?> genre = const Value.absent(),
                 Value<String?> albumArtPath = const Value.absent(),
+                Value<int?> trackNumber = const Value.absent(),
+                Value<int?> discNumber = const Value.absent(),
+                Value<int?> year = const Value.absent(),
                 Value<DateTime> dateAdded = const Value.absent(),
                 Value<int> totalPlayCount = const Value.absent(),
                 Value<DateTime?> lastPlayed = const Value.absent(),
                 Value<bool> isDeleted = const Value.absent(),
+                Value<bool> isFavorite = const Value.absent(),
               }) => TracksCompanion.insert(
                 id: id,
                 filePath: filePath,
@@ -1945,10 +2224,14 @@ class $$TracksTableTableManager
                 durationMs: durationMs,
                 genre: genre,
                 albumArtPath: albumArtPath,
+                trackNumber: trackNumber,
+                discNumber: discNumber,
+                year: year,
                 dateAdded: dateAdded,
                 totalPlayCount: totalPlayCount,
                 lastPlayed: lastPlayed,
                 isDeleted: isDeleted,
+                isFavorite: isFavorite,
               ),
           withReferenceMapper: (p0) => p0
               .map(

@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:home_widget/home_widget.dart';
 
 import '../../../core/database/database_provider.dart';
+import '../../library/providers/browse_providers.dart';
 import '../../library/providers/library_providers.dart';
 import '../../player/views/sleep_timer_sheet.dart';
 import '../providers/settings_providers.dart';
+import '../services/settings_persistence.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -21,6 +24,9 @@ class SettingsScreen extends ConsumerWidget {
     final scan = ref.watch(scanControllerProvider);
     final lastFolder = ref.watch(lastScannedFolderProvider);
     final missing = ref.watch(missingFilesProvider).value ?? const {};
+    final settings = ref.watch(settingsControllerProvider);
+    final deletedCount =
+        (ref.watch(deletedTracksProvider).value ?? const []).length;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
@@ -53,6 +59,14 @@ class SettingsScreen extends ConsumerWidget {
               subtitle: const Text(
                   'They are flagged in the library and skipped during playback'),
             ),
+          ListTile(
+            leading: const Icon(Icons.delete_outline),
+            title: const Text('Removed tracks'),
+            subtitle: Text(deletedCount == 0
+                ? 'Nothing removed'
+                : '$deletedCount track${deletedCount == 1 ? '' : 's'} can be restored'),
+            onTap: () => context.push('/trash'),
+          ),
           const Divider(),
           const _SectionHeader('Playback'),
           ListTile(
@@ -62,6 +76,71 @@ class SettingsScreen extends ConsumerWidget {
             onTap: () => showSleepTimerSheet(context),
           ),
           const _BatteryExemptionTile(),
+          ListTile(
+            leading: const Icon(Icons.graphic_eq),
+            title: const Text('Equalizer'),
+            subtitle: Text(settings.eqEnabled
+                ? 'On · ${settings.replayGain == ReplayGainMode.off ? 'no normalization' : 'normalizing'}'
+                : 'Off'),
+            onTap: () => context.push('/equalizer'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.speed),
+            title: const Text('Playback speed'),
+            subtitle: Text(settings.playbackRate == 1.0
+                ? 'Normal'
+                : '${settings.playbackRate}×'),
+            onTap: () => showModalBottomSheet(
+              context: context,
+              showDragHandle: true,
+              builder: (sheetContext) => const _SpeedSheet(),
+            ),
+          ),
+          const Divider(),
+          const _SectionHeader('Appearance'),
+          ListTile(
+            leading: const Icon(Icons.brightness_6),
+            title: const Text('Theme'),
+            subtitle: Text(switch (settings.themeMode) {
+              AppThemeMode.system => 'Follow system',
+              AppThemeMode.light => 'Light',
+              AppThemeMode.dark => 'Dark',
+            }),
+            onTap: () => showModalBottomSheet(
+              context: context,
+              showDragHandle: true,
+              builder: (sheetContext) => const _ThemeSheet(),
+            ),
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.palette_outlined),
+            title: const Text('Material You colors'),
+            subtitle: const Text('Match the system wallpaper palette'),
+            value: settings.dynamicColor,
+            onChanged: ref
+                .read(settingsControllerProvider.notifier)
+                .setDynamicColor,
+          ),
+          ListTile(
+            leading: const Icon(Icons.widgets_outlined),
+            title: const Text('Add home screen widget'),
+            subtitle:
+                const Text('Track info and controls without unlocking'),
+            onTap: () async {
+              final supported =
+                  await HomeWidget.isRequestPinWidgetSupported() ?? false;
+              if (!context.mounted) return;
+              if (!supported) {
+                _toast(
+                    context,
+                    'Your launcher doesn’t support adding widgets from apps — '
+                    'long-press the home screen instead');
+                return;
+              }
+              await HomeWidget.requestPinWidget(
+                  androidName: 'ElectrowaveWidgetProvider');
+            },
+          ),
           const Divider(),
           const _SectionHeader('Backup'),
           ListTile(
@@ -150,6 +229,76 @@ class SettingsScreen extends ConsumerWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ThemeSheet extends ConsumerWidget {
+  const _ThemeSheet();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsControllerProvider);
+    final controller = ref.read(settingsControllerProvider.notifier);
+
+    return SafeArea(
+      child: RadioGroup<AppThemeMode>(
+        groupValue: settings.themeMode,
+        onChanged: (mode) {
+          if (mode != null) controller.setThemeMode(mode);
+        },
+        child: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            RadioListTile<AppThemeMode>(
+              value: AppThemeMode.system,
+              title: Text('Follow system'),
+            ),
+            RadioListTile<AppThemeMode>(
+              value: AppThemeMode.light,
+              title: Text('Light'),
+            ),
+            RadioListTile<AppThemeMode>(
+              value: AppThemeMode.dark,
+              title: Text('Dark'),
+            ),
+            SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SpeedSheet extends ConsumerWidget {
+  const _SpeedSheet();
+
+  static const List<double> _rates = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final rate = ref.watch(
+        settingsControllerProvider.select((settings) => settings.playbackRate));
+    final controller = ref.read(settingsControllerProvider.notifier);
+
+    return SafeArea(
+      child: RadioGroup<double>(
+        groupValue: rate,
+        onChanged: (value) {
+          if (value != null) controller.setPlaybackRate(value);
+        },
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final value in _rates)
+              RadioListTile<double>(
+                value: value,
+                title: Text(value == 1.0 ? 'Normal (1×)' : '$value×'),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     );
   }

@@ -29,6 +29,9 @@ class ParsedTags {
     this.durationMs = 0,
     this.artBytes,
     this.artMime,
+    this.trackNumber,
+    this.discNumber,
+    this.year,
   });
 
   final String? title;
@@ -38,6 +41,9 @@ class ParsedTags {
   final int durationMs;
   final Uint8List? artBytes;
   final String? artMime;
+  final int? trackNumber;
+  final int? discNumber;
+  final int? year;
 }
 
 ParsedTags parseTags(String filePath) {
@@ -52,11 +58,28 @@ ParsedTags parseTags(String filePath) {
       durationMs: meta.duration?.inMilliseconds ?? 0,
       artBytes: picture?.bytes,
       artMime: picture?.mimetype,
+      trackNumber: meta.trackNumber,
+      discNumber: meta.discNumber,
+      year: meta.year?.year,
     );
   } catch (_) {
     return const ParsedTags(); // Unreadable tags: fall back to filename.
   }
 }
+
+/// Cover images to look for next to the audio file when a track carries no
+/// embedded art — the common layout for CD rips and Bandcamp downloads.
+const List<String> kFolderArtNames = [
+  'cover',
+  'folder',
+  'front',
+  'album',
+  'albumart',
+  'artwork',
+  'thumb',
+];
+
+const List<String> kFolderArtExtensions = ['.jpg', '.jpeg', '.png', '.webp'];
 
 class LibraryScanner {
   LibraryScanner(this.db);
@@ -110,6 +133,10 @@ class LibraryScanner {
           album: meta.album,
           fallbackKey: fallbackTitle,
         );
+      } else {
+        // No embedded art: fall back to a cover image sitting in the same
+        // folder. Referenced in place — no need to copy it into app storage.
+        artPath = await _findFolderArt(p.dirname(filePath));
       }
 
       await db.upsertScannedTrack(TracksCompanion.insert(
@@ -128,11 +155,57 @@ class LibraryScanner {
             ? meta.genre!.trim()
             : null),
         albumArtPath: Value(artPath),
+        trackNumber: Value(meta.trackNumber),
+        discNumber: Value(meta.discNumber),
+        year: Value(meta.year),
       ));
       return true;
     } catch (_) {
       return false;
     }
+  }
+
+  /// Folders are looked up once and cached: a scan walks an album directory
+  /// track by track, so this would otherwise stat the same files repeatedly.
+  final Map<String, String?> _folderArtCache = {};
+
+  Future<String?> _findFolderArt(String folderPath) async {
+    if (_folderArtCache.containsKey(folderPath)) {
+      return _folderArtCache[folderPath];
+    }
+
+    String? found;
+    try {
+      final dir = Directory(folderPath);
+      if (await dir.exists()) {
+        // Index the folder's image files once, then pick by preference order
+        // so 'cover.jpg' wins over 'thumb.png' regardless of listing order.
+        final images = <String, String>{};
+        await for (final entity in dir.list(followLinks: false)) {
+          if (entity is! File) continue;
+          final ext = p.extension(entity.path).toLowerCase();
+          if (!kFolderArtExtensions.contains(ext)) continue;
+          final stem = p.basenameWithoutExtension(entity.path).toLowerCase();
+          images.putIfAbsent(stem, () => entity.path);
+        }
+
+        for (final name in kFolderArtNames) {
+          if (images.containsKey(name)) {
+            found = images[name];
+            break;
+          }
+        }
+        // Nothing conventionally named: accept a lone image in the folder.
+        if (found == null && images.length == 1) {
+          found = images.values.first;
+        }
+      }
+    } on FileSystemException {
+      // Unreadable directory: treat as "no art".
+    }
+
+    _folderArtCache[folderPath] = found;
+    return found;
   }
 
   /// Album art files are shared per (artist, album) so a thousand-track

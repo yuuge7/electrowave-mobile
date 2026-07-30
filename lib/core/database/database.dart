@@ -20,10 +20,14 @@ class Tracks extends Table {
   IntColumn get durationMs => integer()();
   TextColumn get genre => text().nullable()();
   TextColumn get albumArtPath => text().nullable()();
+  IntColumn get trackNumber => integer().nullable()();
+  IntColumn get discNumber => integer().nullable()();
+  IntColumn get year => integer().nullable()();
   DateTimeColumn get dateAdded => dateTime().withDefault(currentDateAndTime)();
   IntColumn get totalPlayCount => integer().withDefault(const Constant(0))();
   DateTimeColumn get lastPlayed => dateTime().nullable()();
   BoolColumn get isDeleted => boolean().withDefault(const Constant(false))();
+  BoolColumn get isFavorite => boolean().withDefault(const Constant(false))();
 }
 
 @DataClassName('PlaybackHistoryEntry')
@@ -53,6 +57,55 @@ class PlaylistTracks extends Table {
 // ---------------------------------------------------------------------------
 
 enum LibrarySort { title, artist, dateAdded, playCount }
+
+/// Album/artist grouping row, aggregated straight from the tracks table —
+/// there are no separate album/artist tables, so identity is the name text.
+class AlbumSummary {
+  const AlbumSummary({
+    required this.album,
+    required this.artist,
+    required this.trackCount,
+    required this.totalMs,
+    this.albumArtPath,
+  });
+
+  final String album;
+
+  /// Album artist, taken as the most common artist on the album.
+  final String artist;
+  final int trackCount;
+  final int totalMs;
+  final String? albumArtPath;
+}
+
+class ArtistSummary {
+  const ArtistSummary({
+    required this.artist,
+    required this.trackCount,
+    required this.albumCount,
+    required this.totalMs,
+    this.albumArtPath,
+  });
+
+  final String artist;
+  final int trackCount;
+  final int albumCount;
+  final int totalMs;
+  final String? albumArtPath;
+}
+
+/// One directory containing audio files, derived from track file paths.
+class FolderSummary {
+  const FolderSummary({
+    required this.path,
+    required this.name,
+    required this.trackCount,
+  });
+
+  final String path;
+  final String name;
+  final int trackCount;
+}
 
 class TopTrackStat {
   const TopTrackStat({required this.track, required this.playCount});
@@ -98,7 +151,19 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onUpgrade: (m, from, to) async {
+          if (from < 2) {
+            await m.addColumn(tracks, tracks.isFavorite);
+            await m.addColumn(tracks, tracks.trackNumber);
+            await m.addColumn(tracks, tracks.discNumber);
+            await m.addColumn(tracks, tracks.year);
+          }
+        },
+      );
 
   static QueryExecutor _openConnection() {
     return LazyDatabase(() async {
@@ -151,6 +216,11 @@ class AppDatabase extends _$AppDatabase {
   Future<Track?> trackById(int id) =>
       (select(tracks)..where((t) => t.id.equals(id))).getSingleOrNull();
 
+  /// Live row for one track, so screens holding a Track snapshot (the player
+  /// state, for instance) still reflect edits to favorites and tags.
+  Stream<Track?> watchTrackById(int id) =>
+      (select(tracks)..where((t) => t.id.equals(id))).watchSingleOrNull();
+
   Future<List<Track>> tracksByIds(List<int> ids) async {
     if (ids.isEmpty) return const [];
     final rows =
@@ -194,6 +264,278 @@ class AppDatabase extends _$AppDatabase {
   Future<void> softDeleteTrack(int trackId) =>
       (update(tracks)..where((t) => t.id.equals(trackId)))
           .write(const TracksCompanion(isDeleted: Value(true)));
+
+  /// Edit tags in the library. Only non-absent fields are written, so callers
+  /// can update a single field without clobbering the rest.
+  Future<void> updateTrackTags(
+    int trackId, {
+    Value<String> title = const Value.absent(),
+    Value<String> artist = const Value.absent(),
+    Value<String> album = const Value.absent(),
+    Value<String?> genre = const Value.absent(),
+    Value<int?> trackNumber = const Value.absent(),
+    Value<int?> discNumber = const Value.absent(),
+    Value<int?> year = const Value.absent(),
+  }) {
+    return (update(tracks)..where((t) => t.id.equals(trackId))).write(
+      TracksCompanion(
+        title: title,
+        artist: artist,
+        album: album,
+        genre: genre,
+        trackNumber: trackNumber,
+        discNumber: discNumber,
+        year: year,
+      ),
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Favorites
+  // -------------------------------------------------------------------------
+
+  Future<void> setFavorite(int trackId, bool favorite) =>
+      (update(tracks)..where((t) => t.id.equals(trackId)))
+          .write(TracksCompanion(isFavorite: Value(favorite)));
+
+  Stream<List<Track>> watchFavorites() {
+    final query = select(tracks)
+      ..where((t) => t.isDeleted.equals(false) & t.isFavorite.equals(true))
+      ..orderBy([
+        (t) => OrderingTerm.asc(t.artist.collate(Collate.noCase)),
+        (t) => OrderingTerm.asc(t.album.collate(Collate.noCase)),
+        (t) => OrderingTerm.asc(t.title.collate(Collate.noCase)),
+      ]);
+    return query.watch();
+  }
+
+  // -------------------------------------------------------------------------
+  // Smart lists
+  // -------------------------------------------------------------------------
+
+  Stream<List<Track>> watchRecentlyAdded({int limit = 100}) {
+    final query = select(tracks)
+      ..where((t) => t.isDeleted.equals(false))
+      ..orderBy([(t) => OrderingTerm.desc(t.dateAdded)])
+      ..limit(limit);
+    return query.watch();
+  }
+
+  Stream<List<Track>> watchRecentlyPlayed({int limit = 100}) {
+    final query = select(tracks)
+      ..where((t) => t.isDeleted.equals(false) & t.lastPlayed.isNotNull())
+      ..orderBy([(t) => OrderingTerm.desc(t.lastPlayed)])
+      ..limit(limit);
+    return query.watch();
+  }
+
+  Stream<List<Track>> watchMostPlayed({int limit = 100}) {
+    final query = select(tracks)
+      ..where((t) =>
+          t.isDeleted.equals(false) & t.totalPlayCount.isBiggerThanValue(0))
+      ..orderBy([
+        (t) => OrderingTerm.desc(t.totalPlayCount),
+        (t) => OrderingTerm.asc(t.title.collate(Collate.noCase)),
+      ])
+      ..limit(limit);
+    return query.watch();
+  }
+
+  // -------------------------------------------------------------------------
+  // Albums / artists
+  // -------------------------------------------------------------------------
+
+  /// Albums are grouped by album name only. Grouping by (album, artist) would
+  /// split compilations and albums with featured guests into one row per
+  /// artist, so the artist shown is the single artist when the album has one
+  /// and 'Various artists' otherwise.
+  Stream<List<AlbumSummary>> watchAlbums({String search = ''}) {
+    final count = tracks.id.count();
+    final totalMs = tracks.durationMs.sum();
+    final art = tracks.albumArtPath.max();
+    final anyArtist = tracks.artist.min();
+    final artistCount = tracks.artist.count(distinct: true);
+
+    final query = selectOnly(tracks)
+      ..addColumns([tracks.album, count, totalMs, art, anyArtist, artistCount])
+      ..where(tracks.isDeleted.equals(false))
+      ..groupBy([tracks.album])
+      ..orderBy([OrderingTerm.asc(tracks.album.collate(Collate.noCase))]);
+
+    if (search.trim().isNotEmpty) {
+      final needle = '%${search.trim()}%';
+      query.where(tracks.album.like(needle) | tracks.artist.like(needle));
+    }
+
+    return query.map((row) {
+      final distinctArtists = row.read(artistCount) ?? 0;
+      return AlbumSummary(
+        album: row.read(tracks.album) ?? '',
+        artist: distinctArtists > 1
+            ? 'Various artists'
+            : (row.read(anyArtist) ?? ''),
+        trackCount: row.read(count) ?? 0,
+        totalMs: row.read(totalMs) ?? 0,
+        albumArtPath: row.read(art),
+      );
+    }).watch();
+  }
+
+  Stream<List<ArtistSummary>> watchArtists({String search = ''}) {
+    final count = tracks.id.count();
+    final albumCount = tracks.album.count(distinct: true);
+    final totalMs = tracks.durationMs.sum();
+    final art = tracks.albumArtPath.max();
+
+    final query = selectOnly(tracks)
+      ..addColumns([tracks.artist, count, albumCount, totalMs, art])
+      ..where(tracks.isDeleted.equals(false))
+      ..groupBy([tracks.artist])
+      ..orderBy([OrderingTerm.asc(tracks.artist.collate(Collate.noCase))]);
+
+    if (search.trim().isNotEmpty) {
+      query.where(tracks.artist.like('%${search.trim()}%'));
+    }
+
+    return query
+        .map((row) => ArtistSummary(
+              artist: row.read(tracks.artist) ?? '',
+              trackCount: row.read(count) ?? 0,
+              albumCount: row.read(albumCount) ?? 0,
+              totalMs: row.read(totalMs) ?? 0,
+              albumArtPath: row.read(art),
+            ))
+        .watch();
+  }
+
+  /// Album running order: disc, then track number, falling back to title for
+  /// files whose tags carry no numbering.
+  Stream<List<Track>> watchAlbumTracks(String album) {
+    final query = select(tracks)
+      ..where((t) => t.isDeleted.equals(false) & t.album.equals(album))
+      ..orderBy([
+        (t) => OrderingTerm.asc(t.discNumber),
+        (t) => OrderingTerm.asc(t.trackNumber),
+        (t) => OrderingTerm.asc(t.title.collate(Collate.noCase)),
+      ]);
+    return query.watch();
+  }
+
+  Stream<List<Track>> watchArtistTracks(String artist) {
+    final query = select(tracks)
+      ..where((t) => t.isDeleted.equals(false) & t.artist.equals(artist))
+      ..orderBy([
+        (t) => OrderingTerm.asc(t.album.collate(Collate.noCase)),
+        (t) => OrderingTerm.asc(t.discNumber),
+        (t) => OrderingTerm.asc(t.trackNumber),
+        (t) => OrderingTerm.asc(t.title.collate(Collate.noCase)),
+      ]);
+    return query.watch();
+  }
+
+  Stream<List<AlbumSummary>> watchArtistAlbums(String artist) {
+    final count = tracks.id.count();
+    final totalMs = tracks.durationMs.sum();
+    final art = tracks.albumArtPath.max();
+
+    final query = selectOnly(tracks)
+      ..addColumns([tracks.album, count, totalMs, art])
+      ..where(tracks.isDeleted.equals(false) & tracks.artist.equals(artist))
+      ..groupBy([tracks.album])
+      ..orderBy([OrderingTerm.asc(tracks.album.collate(Collate.noCase))]);
+
+    return query
+        .map((row) => AlbumSummary(
+              album: row.read(tracks.album) ?? '',
+              artist: artist,
+              trackCount: row.read(count) ?? 0,
+              totalMs: row.read(totalMs) ?? 0,
+              albumArtPath: row.read(art),
+            ))
+        .watch();
+  }
+
+  // -------------------------------------------------------------------------
+  // Folders
+  // -------------------------------------------------------------------------
+
+  /// Grouped in Dart rather than SQL: SQLite has no dirname, and doing it here
+  /// handles both path separators consistently.
+  Stream<List<FolderSummary>> watchFolders() {
+    final query = select(tracks)..where((t) => t.isDeleted.equals(false));
+    return query.watch().map((rows) {
+      final counts = <String, int>{};
+      for (final row in rows) {
+        final dir = p.dirname(row.filePath);
+        counts[dir] = (counts[dir] ?? 0) + 1;
+      }
+      final folders = [
+        for (final entry in counts.entries)
+          FolderSummary(
+            path: entry.key,
+            name: p.basename(entry.key),
+            trackCount: entry.value,
+          ),
+      ];
+      folders.sort((a, b) => a.path.toLowerCase().compareTo(b.path.toLowerCase()));
+      return folders;
+    });
+  }
+
+  Stream<List<Track>> watchFolderTracks(String folderPath) {
+    final query = select(tracks)..where((t) => t.isDeleted.equals(false));
+    return query.watch().map((rows) {
+      final inFolder = [
+        for (final row in rows)
+          if (p.dirname(row.filePath) == folderPath) row,
+      ];
+      inFolder.sort((a, b) {
+        final disc = (a.discNumber ?? 0).compareTo(b.discNumber ?? 0);
+        if (disc != 0) return disc;
+        final track = (a.trackNumber ?? 0).compareTo(b.trackNumber ?? 0);
+        if (track != 0) return track;
+        return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+      });
+      return inFolder;
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Trash (soft-deleted tracks)
+  // -------------------------------------------------------------------------
+
+  Stream<List<Track>> watchDeletedTracks() {
+    final query = select(tracks)
+      ..where((t) => t.isDeleted.equals(true))
+      ..orderBy([(t) => OrderingTerm.asc(t.title.collate(Collate.noCase))]);
+    return query.watch();
+  }
+
+  Future<void> restoreTrack(int trackId) =>
+      (update(tracks)..where((t) => t.id.equals(trackId)))
+          .write(const TracksCompanion(isDeleted: Value(false)));
+
+  /// Permanently drop a library row and everything referencing it. Does not
+  /// touch the audio file on disk.
+  Future<void> purgeTrack(int trackId) async {
+    await transaction(() async {
+      await (delete(playlistTracks)..where((pt) => pt.trackId.equals(trackId)))
+          .go();
+      await (delete(playbackHistory)..where((h) => h.trackId.equals(trackId)))
+          .go();
+      await (delete(tracks)..where((t) => t.id.equals(trackId))).go();
+    });
+  }
+
+  Future<int> emptyTrash() async {
+    final deleted = await (select(tracks)
+          ..where((t) => t.isDeleted.equals(true)))
+        .get();
+    for (final track in deleted) {
+      await purgeTrack(track.id);
+    }
+    return deleted.length;
+  }
 
   // -------------------------------------------------------------------------
   // Play tracking

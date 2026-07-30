@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/database/database.dart';
 import '../../core/database/database_provider.dart';
+import '../../features/library/views/tag_editor_sheet.dart';
 import '../../features/player/providers/player_providers.dart';
 import '../../features/playlists/providers/playlist_providers.dart';
 import 'art_thumb.dart';
@@ -36,6 +38,22 @@ class _TrackMenuSheet extends ConsumerWidget {
           ),
           const Divider(height: 1),
           ListTile(
+            leading: Icon(
+              track.isFavorite ? Icons.favorite : Icons.favorite_border,
+              color: track.isFavorite
+                  ? Theme.of(context).colorScheme.primary
+                  : null,
+            ),
+            title: Text(
+                track.isFavorite ? 'Remove from favorites' : 'Add to favorites'),
+            onTap: () async {
+              Navigator.pop(context);
+              await ref
+                  .read(databaseProvider)
+                  .setFavorite(track.id, !track.isFavorite);
+            },
+          ),
+          ListTile(
             leading: const Icon(Icons.playlist_play),
             title: const Text('Play next'),
             onTap: () {
@@ -59,6 +77,30 @@ class _TrackMenuSheet extends ConsumerWidget {
             onTap: () async {
               Navigator.pop(context);
               await _showAddToPlaylist(context, ref, track);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.edit_outlined),
+            title: const Text('Edit tags'),
+            onTap: () async {
+              Navigator.pop(context);
+              await showTagEditor(context, track);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.album_outlined),
+            title: const Text('Go to album'),
+            onTap: () {
+              Navigator.pop(context);
+              context.push('/album/${Uri.encodeComponent(track.album)}');
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.person_outline),
+            title: const Text('Go to artist'),
+            onTap: () {
+              Navigator.pop(context);
+              context.push('/artist/${Uri.encodeComponent(track.artist)}');
             },
           ),
           ListTile(

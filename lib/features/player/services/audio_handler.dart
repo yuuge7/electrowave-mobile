@@ -6,6 +6,7 @@ import 'package:audio_session/audio_session.dart';
 import 'package:media_kit/media_kit.dart' hide Track;
 
 import '../../../core/database/database.dart';
+import '../../settings/services/settings_persistence.dart';
 
 /// Bridges media_kit playback to Android via audio_service:
 /// media-style notification, lock screen controls, headset/bluetooth
@@ -147,6 +148,7 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
           : null,
     ));
     await _player.open(Media(track.filePath), play: false);
+    if (_desiredRate != 1.0) await _player.setRate(_desiredRate);
     if (autoPlay) await play();
   }
 
@@ -191,6 +193,65 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> setVolume(double volume) => _player.setVolume(volume);
 
   double get volume => _player.state.volume;
+
+  /// Playback speed. Broadcast so the notification's position extrapolation
+  /// stays in step with the audio.
+  Future<void> setRate(double rate) async {
+    _desiredRate = rate;
+    await _player.setRate(rate);
+    _broadcast();
+  }
+
+  double get rate => _player.state.rate;
+
+  /// Remembered so it can be re-applied after every [loadTrack] — mpv resets
+  /// speed when a new file is opened.
+  double _desiredRate = 1.0;
+
+  // -------------------------------------------------------------------------
+  // mpv-level audio processing
+  // -------------------------------------------------------------------------
+  //
+  // media_kit doesn't expose the Android audio session id, so the platform
+  // AudioEffect API (Equalizer/BassBoost) isn't reachable. Instead these drive
+  // libmpv's own filter chain and ReplayGain support, which also keeps the
+  // behaviour identical across platforms.
+
+  NativePlayer? get _native {
+    final platform = _player.platform;
+    return platform is NativePlayer ? platform : null;
+  }
+
+  /// Rebuild the `af` filter chain from [settings]. Passing an empty chain
+  /// clears any filters, so a disabled/flat EQ costs nothing at runtime.
+  Future<void> applyAudioSettings(AppSettings settings) async {
+    final native = _native;
+    if (native == null) return;
+
+    final filters = <String>[];
+    if (settings.eqEnabled) {
+      for (var i = 0; i < kEqBandFrequencies.length; i++) {
+        final gain = i < settings.eqGainsDb.length ? settings.eqGainsDb[i] : 0.0;
+        // Skip inaudible bands to keep the chain short.
+        if (gain.abs() < 0.1) continue;
+        filters.add(
+          'equalizer=f=${kEqBandFrequencies[i]}:t=o:w=2'
+          ':g=${gain.toStringAsFixed(1)}',
+        );
+      }
+    }
+
+    try {
+      await native.setProperty('af', filters.join(','));
+      await native.setProperty('replaygain', switch (settings.replayGain) {
+        ReplayGainMode.off => 'no',
+        ReplayGainMode.track => 'track',
+        ReplayGainMode.album => 'album',
+      });
+    } catch (_) {
+      // An unsupported filter or property must not take playback down.
+    }
+  }
 
   Duration get position => _player.state.position;
 

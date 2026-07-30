@@ -1,12 +1,20 @@
+import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'features/library/providers/browse_providers.dart';
+import 'features/library/views/browse_views.dart';
 import 'features/library/views/library_screen.dart';
 import 'features/library/views/permission_denied_screen.dart';
+import 'features/library/views/trash_screen.dart';
+import 'features/settings/views/equalizer_screen.dart';
 import 'features/player/views/now_playing_screen.dart';
 import 'features/player/views/queue_screen.dart';
 import 'features/playlists/views/playlist_detail_screen.dart';
 import 'features/playlists/views/playlists_screen.dart';
+import 'features/settings/providers/settings_providers.dart';
+import 'features/settings/services/settings_persistence.dart';
 import 'features/settings/views/settings_screen.dart';
 import 'features/stats/views/stats_screen.dart';
 import 'shared/widgets/app_shell.dart';
@@ -72,34 +80,91 @@ final GoRouter appRouter = GoRouter(
       parentNavigatorKey: _rootNavigatorKey,
       builder: (context, state) => const PermissionDeniedScreen(),
     ),
+    // Browse detail pages. Names travel URI-encoded in the path because
+    // albums/artists/folders have no numeric ids.
+    GoRoute(
+      path: '/album/:name',
+      builder: (context, state) => AlbumDetailScreen(
+        album: Uri.decodeComponent(state.pathParameters['name'] ?? ''),
+      ),
+    ),
+    GoRoute(
+      path: '/artist/:name',
+      builder: (context, state) => ArtistDetailScreen(
+        artist: Uri.decodeComponent(state.pathParameters['name'] ?? ''),
+      ),
+    ),
+    GoRoute(
+      path: '/folder/:path',
+      builder: (context, state) => FolderDetailScreen(
+        folderPath: Uri.decodeComponent(state.pathParameters['path'] ?? ''),
+      ),
+    ),
+    GoRoute(
+      path: '/smart/:list',
+      builder: (context, state) {
+        final name = state.pathParameters['list'];
+        final list = SmartList.values.firstWhere(
+          (value) => value.name == name,
+          orElse: () => SmartList.favorites,
+        );
+        return SmartListScreen(list: list);
+      },
+    ),
+    GoRoute(
+      path: '/trash',
+      builder: (context, state) => const TrashScreen(),
+    ),
+    GoRoute(
+      path: '/equalizer',
+      builder: (context, state) => const EqualizerScreen(),
+    ),
   ],
 );
 
-class ElectrowaveApp extends StatelessWidget {
+const Color kBrandSeed = Color(0xFF00E5CC);
+
+class ElectrowaveApp extends ConsumerWidget {
   const ElectrowaveApp({super.key});
 
+  ThemeData _theme(ColorScheme scheme) => ThemeData(
+        useMaterial3: true,
+        colorScheme: scheme,
+        scaffoldBackgroundColor: scheme.surface,
+      );
+
   @override
-  Widget build(BuildContext context) {
-    final darkScheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF00E5CC),
-      brightness: Brightness.dark,
-    );
-    return MaterialApp.router(
-      title: 'Electrowave',
-      debugShowCheckedModeBanner: false,
-      themeMode: ThemeMode.dark,
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        colorScheme: darkScheme,
-        scaffoldBackgroundColor: darkScheme.surface,
-      ),
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF00E5CC),
-        ),
-      ),
-      routerConfig: appRouter,
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsControllerProvider);
+
+    // DynamicColorBuilder yields the wallpaper palette on Android 12+, and
+    // null everywhere else — fall back to the brand seed in that case.
+    return DynamicColorBuilder(
+      builder: (lightDynamic, darkDynamic) {
+        final useDynamic = settings.dynamicColor;
+        final lightScheme = useDynamic && lightDynamic != null
+            ? lightDynamic.harmonized()
+            : ColorScheme.fromSeed(seedColor: kBrandSeed);
+        final darkScheme = useDynamic && darkDynamic != null
+            ? darkDynamic.harmonized()
+            : ColorScheme.fromSeed(
+                seedColor: kBrandSeed,
+                brightness: Brightness.dark,
+              );
+
+        return MaterialApp.router(
+          title: 'Electrowave',
+          debugShowCheckedModeBanner: false,
+          themeMode: switch (settings.themeMode) {
+            AppThemeMode.system => ThemeMode.system,
+            AppThemeMode.light => ThemeMode.light,
+            AppThemeMode.dark => ThemeMode.dark,
+          },
+          theme: _theme(lightScheme),
+          darkTheme: _theme(darkScheme),
+          routerConfig: appRouter,
+        );
+      },
     );
   }
 }

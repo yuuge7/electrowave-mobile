@@ -8,6 +8,7 @@ import '../../../core/database/database.dart';
 import '../../../core/database/database_provider.dart';
 import '../services/audio_handler.dart';
 import '../services/playback_persistence.dart';
+import '../services/widget_service.dart';
 import 'sleep_timer_provider.dart';
 
 /// Overridden in main() with the handler returned by AudioService.init().
@@ -94,6 +95,7 @@ class PlayerController extends Notifier<PlayerQueueState> {
   ElectrowaveAudioHandler get _handler => ref.read(audioHandlerProvider);
   AppDatabase get _db => ref.read(databaseProvider);
   final PlaybackPersistence _persistence = PlaybackPersistence();
+  final WidgetService _widgets = WidgetService();
   final Random _random = Random();
 
   bool _scrobbled = false;
@@ -107,6 +109,13 @@ class PlayerController extends Notifier<PlayerQueueState> {
 
     _positionSub = _handler.player.stream.position.listen(_onPosition);
     ref.onDispose(() => _positionSub?.cancel());
+
+    // Keep the home screen widget in step with play/pause. Track changes push
+    // their own update from _loadAndPlay.
+    final playingSub = _handler.player.stream.playing.listen((playing) {
+      unawaited(_widgets.update(track: state.current, playing: playing));
+    });
+    ref.onDispose(playingSub.cancel);
 
     // Backfill missing durations once the player knows the real length.
     final durationSub = _handler.player.stream.duration.listen((duration) {
@@ -149,6 +158,24 @@ class PlayerController extends Notifier<PlayerQueueState> {
     }
     state = next;
     await _loadAndPlay(track);
+  }
+
+  /// Turn shuffle on and start [contextTracks] from a random track.
+  Future<void> shufflePlayList(
+    List<Track> contextTracks,
+    String contextName,
+  ) async {
+    if (contextTracks.isEmpty) return;
+    final start = _random.nextInt(contextTracks.length);
+    state = state.copyWith(
+      context: List.of(contextTracks),
+      contextName: contextName,
+      contextIndex: start,
+      fromManualQueue: false,
+      shuffle: true,
+      shuffleOrder: _makeShuffleOrder(contextTracks.length, start),
+    );
+    await _loadAndPlay(contextTracks[start]);
   }
 
   Future<void> togglePlayPause() async {
@@ -364,6 +391,8 @@ class PlayerController extends Notifier<PlayerQueueState> {
           .values[saved.repeatIndex.clamp(0, RepeatMode.values.length - 1)],
     );
 
+    unawaited(_widgets.update(track: current, playing: false));
+
     if (!await trackFileExists(current)) return;
 
     _scrobbled = false;
@@ -398,6 +427,7 @@ class PlayerController extends Notifier<PlayerQueueState> {
     state = state.copyWith(current: track);
     await _handler.loadTrack(track);
     unawaited(_saveState());
+    unawaited(_widgets.update(track: track, playing: _handler.playing));
   }
 
   Future<void> _handleCompletion() async {

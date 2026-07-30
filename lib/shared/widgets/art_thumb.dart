@@ -10,12 +10,17 @@ class ArtThumb extends StatelessWidget {
     this.size = 48,
     this.borderRadius = 8,
     this.iconSize,
+    this.decodeWidth,
   });
 
   final String? artPath;
   final double size;
   final double borderRadius;
   final double? iconSize;
+
+  /// Logical width to decode at, for callers that size themselves from their
+  /// parent's constraints (a grid tile) rather than a fixed [size].
+  final double? decodeWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +33,8 @@ class ArtThumb extends StatelessWidget {
       // where a downscaled decode of the same file succeeds. When size is
       // infinite (full-screen art) the screen's shortest side is the most
       // it can ever be displayed at.
-      final logicalSize = size.isFinite ? size : mq.size.shortestSide;
+      final logicalSize =
+          decodeWidth ?? (size.isFinite ? size : mq.size.shortestSide);
       child = Image.file(
         File(artPath!),
         width: size,

@@ -2,9 +2,12 @@ import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/database/database_provider.dart';
 import '../../../shared/utils/format.dart';
 import '../../../shared/widgets/art_thumb.dart';
 import '../../../shared/widgets/track_context_menu.dart';
+import '../../library/providers/browse_providers.dart';
+import '../../settings/providers/settings_providers.dart';
 import '../providers/player_providers.dart';
 import '../providers/sleep_timer_provider.dart';
 import 'sleep_timer_sheet.dart';
@@ -15,15 +18,20 @@ class NowPlayingScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(playerControllerProvider);
-    final track = state.current;
+    final playerTrack = state.current;
     final controller = ref.read(playerControllerProvider.notifier);
 
-    if (track == null) {
+    if (playerTrack == null) {
       return Scaffold(
         appBar: AppBar(),
         body: const Center(child: Text('Nothing playing')),
       );
     }
+
+    // The player holds a snapshot; watch the row so favorite/tag edits show
+    // up here immediately.
+    final track =
+        ref.watch(trackStreamProvider(playerTrack.id)).value ?? playerTrack;
 
     final playing = ref.watch(playingProvider).value ?? false;
     final position = ref.watch(positionProvider).value ?? Duration.zero;
@@ -54,6 +62,16 @@ class NowPlayingScreen extends ConsumerWidget {
         ),
         centerTitle: true,
         actions: [
+          IconButton(
+            icon: Icon(
+              track.isFavorite ? Icons.favorite : Icons.favorite_border,
+              color: track.isFavorite ? scheme.primary : null,
+            ),
+            tooltip: track.isFavorite ? 'Remove from favorites' : 'Favorite',
+            onPressed: () => ref
+                .read(databaseProvider)
+                .setFavorite(track.id, !track.isFavorite),
+          ),
           IconButton(
             icon: const Icon(Icons.more_vert),
             onPressed: () => showTrackContextMenu(context, track),
@@ -167,6 +185,7 @@ class NowPlayingScreen extends ConsumerWidget {
                           color: sleepTimer != null ? scheme.primary : null),
                     ),
                   ),
+                  const _SpeedButton(),
                   TextButton.icon(
                     onPressed: () => context.push('/queue'),
                     icon: const Icon(Icons.queue_music, size: 20),
@@ -177,6 +196,51 @@ class NowPlayingScreen extends ConsumerWidget {
               const SizedBox(height: 8),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Playback speed. Persisted, and re-applied to every track that loads.
+class _SpeedButton extends ConsumerWidget {
+  const _SpeedButton();
+
+  static const List<double> _rates = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final rate = ref.watch(
+        settingsControllerProvider.select((settings) => settings.playbackRate));
+    final scheme = Theme.of(context).colorScheme;
+    final custom = rate != 1.0;
+
+    return PopupMenuButton<double>(
+      tooltip: 'Playback speed',
+      initialValue: rate,
+      onSelected: (value) => ref
+          .read(settingsControllerProvider.notifier)
+          .setPlaybackRate(value),
+      itemBuilder: (context) => [
+        for (final value in _rates)
+          PopupMenuItem(
+            value: value,
+            child: Text(value == 1.0 ? 'Normal (1×)' : '$value×'),
+          ),
+      ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.speed,
+                size: 20, color: custom ? scheme.primary : null),
+            const SizedBox(width: 4),
+            Text(
+              custom ? '$rate×' : 'Speed',
+              style: TextStyle(color: custom ? scheme.primary : null),
+            ),
+          ],
         ),
       ),
     );
