@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- audio_service resolves its notification icons by name at runtime
+     (Resources.getIdentifier), which the release resource shrinker can't
+     see — without this keep rule they get stripped and every playback
+     state update throws "You must specify an icon resource id". -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/audio_service_*" />

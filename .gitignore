@@ -1,0 +1,54 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ / Android Studio
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# VS Code
+.vscode/
+
+# Claude Code (machine-local permissions, contains absolute paths)
+.claude/settings.local.json
+
+# Flutter / Dart / Pub
+**/doc/api/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+/build/
+**/generated_plugin_registrant.dart
+
+# Android
+.gradle/
+/captures/
+.externalNativeBuild
+.cxx
+local.properties
+**/android/**/gradle-wrapper.jar
+**/android/captures/
+**/android/gradlew
+**/android/gradlew.bat
+**/android/local.properties
+**/android/**/GeneratedPluginRegistrant.java
+
+# Release signing — never commit these
+**/android/key.properties
+*.jks
+*.keystore

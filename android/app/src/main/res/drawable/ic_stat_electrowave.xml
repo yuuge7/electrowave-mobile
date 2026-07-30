@@ -1,0 +1,13 @@
+<!-- Notification small icon. Android masks small icons through their alpha
+     channel, so this MUST stay a white glyph on a transparent background —
+     pointing androidNotificationIcon at the full-colour mipmap/ic_launcher
+     renders as a solid white square instead. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M1.75,8h2.5v8h-2.5z M6.25,5h2.5v14h-2.5z M10.75,2h2.5v20h-2.5z M15.25,5h2.5v14h-2.5z M19.75,8h2.5v8h-2.5z" />
+</vector>
