@@ -10,9 +10,9 @@ A local music player for Android, built with Flutter. Your files, on your phone 
 - **Tag editor** — fix title, artist, album, genre, track/disc number and year in-app. Writes the file's tags and the library row, so a rescan won't undo your edit.
 - **Removed tracks** — removing a track is a soft delete, so play history survives; Settings → Removed tracks restores it or deletes it for good. Audio files on disk are never touched.
 - **Equalizer** — 5-band EQ (±12 dB) with presets, plus ReplayGain volume normalization per track or per album.
-- **Playback speed** — 0.5× to 2×, persisted and re-applied to every track.
+- **Playback speed** — 0.5× to 2×, persisted and re-applied to every track. Pitch-preserving: the chain runs mpv's `scaletempo2` time-stretcher with a music-tuned window instead of mpv's speech-oriented automatic correction.
 - **Appearance** — light / dark / follow-system, and optional Material You colors from your wallpaper.
-- **Home screen widget** — current track and previous / play-pause / next without unlocking.
+- **Home screen widget** — 5×2 cells: album art, current track and previous / play-pause / next without unlocking.
 - **Playback** — powered by `media_kit`. Play/pause, seek, next/previous, shuffle, repeat (off / all / one). Mini player above the navigation bar expands to a full now-playing screen.
 - **Background playback** — keeps playing with the screen off, with a media notification, lock screen controls, audio focus handling, and headset/bluetooth button support.
 - **Queue system** — playing a track from any list sets that list as the playback context; a manual queue (*Play next* / *Add to queue*) always takes priority. Reorder or remove from the queue screen.
@@ -81,6 +81,8 @@ Non-obvious constraints — breaking these produces bugs that only show up after
 - Run `dart run build_runner build` after editing the drift schema in `lib/core/database/database.dart`. The schema is at **v2**; `MigrationStrategy` adds `isFavorite`, `trackNumber`, `discNumber` and `year`, so existing installs upgrade in place.
 - **EQ and ReplayGain run inside libmpv, not Android.** media_kit doesn't expose the Android audio session id, so the platform `AudioEffect` API (Equalizer/BassBoost) is unreachable. `applyAudioSettings` builds an mpv `af` chain of `equalizer` filters and sets mpv's own `replaygain` property instead — same behaviour on every platform, no session id needed.
 - Playback speed must be re-applied after every `Player.open()`; mpv resets it per file. The handler keeps `_desiredRate` for exactly that.
+- **The handler owns mpv's `af` chain outright.** media_kit's `setRate` only sets `speed` and leaves stretching to `audio-pitch-correction`, which inserts plain `scaletempo` at a 60 ms stride — audibly warbly on music. `_applyFilterChain` inserts a tuned `scaletempo2` itself (only when the rate is off 1.0×) and sets `audio-pitch-correction=no`, so exactly one stretcher is in the chain. `NativePlayer.setProperty` discards libmpv's return code, so `_probeStretchFilter` reads `af` back to find out whether a filter actually exists in this build — mpv rejects the entire list if one name is unknown.
+- **POST_NOTIFICATIONS is not optional on Android 13+.** Without it the foreground service still starts and audio still plays, but the media notification and lock screen controls are dropped silently, which reads as a broken app. Once permanently denied the system dialog never appears again, so Settings → Playback shows the state and falls back to `openAppSettings()`.
 - Albums are grouped by **album name alone**. Grouping by (album, artist) splits compilations and albums with featured guests into one row per artist; the artist column shows the single artist when there is one and 'Various artists' otherwise.
 
 ### Not implemented: gapless playback / crossfade

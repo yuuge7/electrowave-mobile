@@ -269,10 +269,13 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
 
   double get volume => _player.state.volume;
 
-  /// Playback speed. Broadcast so the notification's position extrapolation
-  /// stays in step with the audio.
+  /// Playback speed. The filter chain is rebuilt *before* the speed changes
+  /// so the time-stretcher is already in place — otherwise the first frames
+  /// come out pitch-shifted. Broadcast so the notification's position
+  /// extrapolation stays in step with the audio.
   Future<void> setRate(double rate) async {
     _desiredRate = rate;
+    await _applyFilterChain();
     await _player.setRate(rate);
     _broadcast();
   }
@@ -297,14 +300,72 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
     return platform is NativePlayer ? platform : null;
   }
 
-  /// Rebuild the `af` filter chain from [settings]. Passing an empty chain
-  /// clears any filters, so a disabled/flat EQ costs nothing at runtime.
-  Future<void> applyAudioSettings(AppSettings settings) async {
+  /// Last settings seen, so the chain can be rebuilt on a speed change
+  /// without the settings controller being involved.
+  AppSettings? _audioSettings;
+
+  /// Time-stretch filter, tuned for music rather than mpv's speech-oriented
+  /// defaults, most preferred first.
+  ///
+  /// mpv's automatic pitch correction inserts plain `scaletempo` with a 60 ms
+  /// stride, which chorus/warbles audibly on music at any speed off 1.0.
+  /// `scaletempo2` is the WSOLA implementation Chromium uses for the same job
+  /// and is transparent by comparison; a longer analysis window than its
+  /// 12 ms default suits sustained musical tones. The legacy filter is kept
+  /// as a fallback with a much shorter stride and heavy overlap, which is the
+  /// usual fix for its warbling.
+  static const _stretchFilters = <String>[
+    'scaletempo2=search-interval=30:window-size=20',
+    'scaletempo=stride=28:overlap=0.9:search=20',
+  ];
+
+  String? _stretchFilter;
+  bool _stretchProbed = false;
+
+  /// Finds a stretch filter this libmpv build actually has. [NativePlayer]'s
+  /// `setProperty` discards libmpv's return code, so the only way to know an
+  /// `af` string was accepted is to read the chain back — mpv rejects the
+  /// whole list if one filter is unknown and leaves the previous one in place.
+  Future<void> _probeStretchFilter(NativePlayer native) async {
+    if (_stretchProbed) return;
+    _stretchProbed = true;
+
+    for (final filter in _stretchFilters) {
+      final name = filter.split('=').first;
+      try {
+        await native.setProperty('af', filter);
+        if ((await native.getProperty('af')).contains(name)) {
+          _stretchFilter = filter;
+          // Exactly one stretcher in the chain: mpv would otherwise insert
+          // its own on top of ours and the two would fight over the speed.
+          await native.setProperty('audio-pitch-correction', 'no');
+          return;
+        }
+      } catch (_) {
+        // Try the next candidate.
+      }
+    }
+
+    // Nothing usable — leave mpv to do its own (worse) correction.
+    try {
+      await native.setProperty('audio-pitch-correction', 'yes');
+    } catch (_) {}
+  }
+
+  /// Rebuild the `af` chain: time-stretcher (only off 1.0×, so normal-speed
+  /// playback is bit-for-bit untouched) followed by the EQ bands. An empty
+  /// chain clears all filters, so a disabled/flat EQ costs nothing.
+  Future<void> _applyFilterChain() async {
     final native = _native;
     if (native == null) return;
+    await _probeStretchFilter(native);
 
-    final filters = <String>[];
-    if (settings.eqEnabled) {
+    final settings = _audioSettings;
+    final filters = <String>[
+      if (_desiredRate != 1.0 && _stretchFilter != null) _stretchFilter!,
+    ];
+
+    if (settings != null && settings.eqEnabled) {
       for (var i = 0; i < kEqBandFrequencies.length; i++) {
         final gain = i < settings.eqGainsDb.length ? settings.eqGainsDb[i] : 0.0;
         // Skip inaudible bands to keep the chain short.
@@ -318,13 +379,26 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
 
     try {
       await native.setProperty('af', filters.join(','));
+    } catch (_) {
+      // An unsupported filter must not take playback down.
+    }
+  }
+
+  /// Apply EQ + ReplayGain from [settings].
+  Future<void> applyAudioSettings(AppSettings settings) async {
+    _audioSettings = settings;
+    final native = _native;
+    if (native == null) return;
+
+    await _applyFilterChain();
+    try {
       await native.setProperty('replaygain', switch (settings.replayGain) {
         ReplayGainMode.off => 'no',
         ReplayGainMode.track => 'track',
         ReplayGainMode.album => 'album',
       });
     } catch (_) {
-      // An unsupported filter or property must not take playback down.
+      // An unsupported property must not take playback down.
     }
   }
 

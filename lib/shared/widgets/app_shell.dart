@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -23,8 +25,10 @@ class _AppShellState extends ConsumerState<AppShell> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Playback-notification permission (Android 13+), best effort.
-      ref.read(permissionServiceProvider).requestNotifications();
+      // Playback-notification permission (Android 13+), best effort. If it
+      // was permanently denied this returns without prompting; Settings →
+      // Playback surfaces that state and links to the system page.
+      unawaited(ref.read(permissionServiceProvider).requestNotifications());
 
       if (ref.read(importAppliedProvider)) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(

@@ -32,14 +32,25 @@ class PermissionService {
     return Permission.storage.isGranted;
   }
 
-  /// Notification permission (Android 13+) for the playback notification.
-  /// Best effort — playback works without it, just without the notification.
-  Future<void> requestNotifications() async {
-    if (!Platform.isAndroid) return;
+  /// True when the playback notification can actually be posted. Android 13+
+  /// needs POST_NOTIFICATIONS at runtime: without it the foreground service
+  /// still runs and audio still plays, but the notification and lock screen
+  /// controls are silently dropped.
+  Future<bool> hasNotificationPermission() async {
+    if (!Platform.isAndroid) return true;
+    return Permission.notification.isGranted;
+  }
+
+  /// Requests the notification permission, returning the resulting grant
+  /// state. Returns false without prompting when the user has permanently
+  /// denied it — the system dialog no longer appears, so the caller has to
+  /// send them to app settings ([openSettings]).
+  Future<bool> requestNotifications() async {
+    if (!Platform.isAndroid) return true;
     final status = await Permission.notification.status;
-    if (status.isDenied) {
-      await Permission.notification.request();
-    }
+    if (status.isGranted) return true;
+    if (status.isPermanentlyDenied) return false;
+    return (await Permission.notification.request()).isGranted;
   }
 
   /// Battery-optimization exemption. Without it, OEM power managers

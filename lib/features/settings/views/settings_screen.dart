@@ -87,6 +87,7 @@ class SettingsScreen extends ConsumerWidget {
               builder: (sheetContext) => const _InactivityStopSheet(),
             ),
           ),
+          const _NotificationPermissionTile(),
           const _BatteryExemptionTile(),
           ListTile(
             leading: const Icon(Icons.graphic_eq),
@@ -360,6 +361,79 @@ class _InactivityStopSheet extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// POST_NOTIFICATIONS status + request. Without it Android 13+ drops the
+/// media notification and lock screen controls entirely while audio keeps
+/// playing, which reads as "the app is broken" — so surface it.
+class _NotificationPermissionTile extends ConsumerStatefulWidget {
+  const _NotificationPermissionTile();
+
+  @override
+  ConsumerState<_NotificationPermissionTile> createState() =>
+      _NotificationPermissionTileState();
+}
+
+class _NotificationPermissionTileState
+    extends ConsumerState<_NotificationPermissionTile> with WidgetsBindingObserver {
+  bool? _granted;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _refresh();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Picks up a grant made on the system settings page we sent them to.
+    if (state == AppLifecycleState.resumed) _refresh();
+  }
+
+  Future<void> _refresh() async {
+    final granted =
+        await ref.read(permissionServiceProvider).hasNotificationPermission();
+    if (mounted) setState(() => _granted = granted);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final granted = _granted;
+    return ListTile(
+      leading: Icon(
+        granted == false
+            ? Icons.notifications_off_outlined
+            : Icons.notifications_active_outlined,
+        color: granted == false ? Theme.of(context).colorScheme.error : null,
+      ),
+      title: const Text('Playback notification'),
+      subtitle: Text(granted == true
+          ? 'Notification and lock screen controls are allowed'
+          : 'Blocked — playback controls cannot be shown. Tap to allow'),
+      trailing: granted == true
+          ? Icon(Icons.check_circle,
+              color: Theme.of(context).colorScheme.primary)
+          : null,
+      onTap: granted == true
+          ? null
+          : () async {
+              final service = ref.read(permissionServiceProvider);
+              // A permanently denied permission no longer raises the system
+              // dialog, so fall through to the app's settings page.
+              if (!await service.requestNotifications()) {
+                await service.openSettings();
+              }
+              await _refresh();
+            },
     );
   }
 }

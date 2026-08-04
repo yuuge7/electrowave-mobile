@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Laid out for the 5x2 cell size (~320x110dp): album art on the left, track
+     text stacked over the transport controls on the right. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
@@ -10,8 +12,8 @@
 
     <ImageView
         android:id="@+id/widget_art"
-        android:layout_width="56dp"
-        android:layout_height="56dp"
+        android:layout_width="76dp"
+        android:layout_height="76dp"
         android:contentDescription="@string/widget_art_description"
         android:scaleType="centerCrop" />
 
@@ -29,7 +31,7 @@
             android:ellipsize="end"
             android:maxLines="1"
             android:textColor="#FFFFFFFF"
-            android:textSize="14sp"
+            android:textSize="16sp"
             android:textStyle="bold" />
 
         <TextView
@@ -39,30 +41,40 @@
             android:ellipsize="end"
             android:maxLines="1"
             android:textColor="#B3FFFFFF"
-            android:textSize="12sp" />
+            android:textSize="13sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:id="@+id/widget_previous"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:contentDescription="@string/widget_previous"
+                android:padding="8dp"
+                android:src="@drawable/ic_widget_previous" />
+
+            <ImageView
+                android:id="@+id/widget_play_pause"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
+                android:contentDescription="@string/widget_play_pause"
+                android:padding="8dp"
+                android:src="@drawable/ic_widget_play" />
+
+            <ImageView
+                android:id="@+id/widget_next"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:contentDescription="@string/widget_next"
+                android:padding="8dp"
+                android:src="@drawable/ic_widget_next" />
+        </LinearLayout>
     </LinearLayout>
-
-    <ImageView
-        android:id="@+id/widget_previous"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
-        android:contentDescription="@string/widget_previous"
-        android:padding="8dp"
-        android:src="@drawable/ic_widget_previous" />
-
-    <ImageView
-        android:id="@+id/widget_play_pause"
-        android:layout_width="44dp"
-        android:layout_height="44dp"
-        android:contentDescription="@string/widget_play_pause"
-        android:padding="8dp"
-        android:src="@drawable/ic_widget_play" />
-
-    <ImageView
-        android:id="@+id/widget_next"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
-        android:contentDescription="@string/widget_next"
-        android:padding="8dp"
-        android:src="@drawable/ic_widget_next" />
 </LinearLayout>

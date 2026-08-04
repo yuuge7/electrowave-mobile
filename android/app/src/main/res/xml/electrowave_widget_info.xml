@@ -1,8 +1,14 @@
+<!-- 5x2 cells. The launcher grid formula is 70 * cells - 30, so 5 columns is
+     320dp and 2 rows is 110dp; targetCellWidth/Height are what Android 12+
+     actually places by, minWidth/minHeight the fallback below that. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/widget_description"
     android:initialLayout="@layout/electrowave_widget"
-    android:minHeight="80dp"
-    android:minWidth="250dp"
+    android:minHeight="110dp"
+    android:minWidth="320dp"
     android:previewLayout="@layout/electrowave_widget"
-    android:resizeMode="horizontal"
+    android:resizeMode="horizontal|vertical"
+    android:targetCellHeight="2"
+    android:targetCellWidth="5"
     android:updatePeriodMillis="0"
     android:widgetCategory="home_screen" />
