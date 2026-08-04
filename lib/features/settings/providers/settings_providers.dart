@@ -39,6 +39,7 @@ class SettingsController extends Notifier<AppSettings> {
     final handler = ref.read(audioHandlerProvider);
     await handler.setRate(settings.playbackRate);
     await handler.applyAudioSettings(settings);
+    handler.setInactivityTimeout(settings.inactivityStopTimeout);
   }
 
   Future<void> _update(AppSettings next, {bool audio = false}) async {
@@ -80,6 +81,12 @@ class SettingsController extends Notifier<AppSettings> {
 
   Future<void> setReplayGain(ReplayGainMode mode) =>
       _update(state.copyWith(replayGain: mode), audio: true);
+
+  /// 0 disables the no-interaction auto-stop.
+  Future<void> setInactivityStopMinutes(int minutes) => _update(
+        state.copyWith(inactivityStopMinutes: minutes < 0 ? 0 : minutes),
+        audio: true,
+      );
 }
 
 /// IDs of library tracks whose files no longer exist on disk (e.g. after a

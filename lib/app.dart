@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'features/library/providers/browse_providers.dart';
+import 'features/player/providers/player_providers.dart';
 import 'features/library/views/browse_views.dart';
 import 'features/library/views/library_screen.dart';
 import 'features/library/views/permission_denied_screen.dart';
@@ -137,6 +138,17 @@ class ElectrowaveApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsControllerProvider);
 
+    // Every touch anywhere in the app feeds the audio handler's
+    // "stop when unattended" timer (Settings → Playback). Sitting above
+    // MaterialApp it sees the whole app's pointer events without any screen
+    // having to opt in.
+    return Listener(
+      onPointerDown: (_) => ref.read(audioHandlerProvider).noteUserActivity(),
+      child: _buildApp(settings),
+    );
+  }
+
+  Widget _buildApp(AppSettings settings) {
     // DynamicColorBuilder yields the wallpaper palette on Android 12+, and
     // null everywhere else — fall back to the brand seed in that case.
     return DynamicColorBuilder(

@@ -75,6 +75,18 @@ class SettingsScreen extends ConsumerWidget {
             subtitle: const Text('Pause playback after a delay'),
             onTap: () => showSleepTimerSheet(context),
           ),
+          ListTile(
+            leading: const Icon(Icons.timer_off_outlined),
+            title: const Text('Stop when unattended'),
+            subtitle: Text(settings.inactivityStopMinutes == 0
+                ? 'Off · keep playing until stopped'
+                : 'After ${formatInactivityStop(settings.inactivityStopMinutes)} without touching anything'),
+            onTap: () => showModalBottomSheet(
+              context: context,
+              showDragHandle: true,
+              builder: (sheetContext) => const _InactivityStopSheet(),
+            ),
+          ),
           const _BatteryExemptionTile(),
           ListTile(
             leading: const Icon(Icons.graphic_eq),
@@ -295,6 +307,54 @@ class _SpeedSheet extends ConsumerWidget {
               RadioListTile<double>(
                 value: value,
                 title: Text(value == 1.0 ? 'Normal (1×)' : '$value×'),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// "30 minutes" / "2 hours" for a whole number of minutes.
+String formatInactivityStop(int minutes) {
+  if (minutes % 60 != 0) return '$minutes minutes';
+  final hours = minutes ~/ 60;
+  return hours == 1 ? '1 hour' : '$hours hours';
+}
+
+class _InactivityStopSheet extends ConsumerWidget {
+  const _InactivityStopSheet();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final minutes = ref.watch(settingsControllerProvider
+        .select((settings) => settings.inactivityStopMinutes));
+    final controller = ref.read(settingsControllerProvider.notifier);
+
+    return SafeArea(
+      child: RadioGroup<int>(
+        groupValue: minutes,
+        onChanged: (value) {
+          if (value != null) controller.setInactivityStopMinutes(value);
+        },
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text(
+                'Playback stops if you have not touched the app, the '
+                'notification, the widget or a headset button for this long. '
+                'Skipping tracks on its own does not count.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+            for (final value in kInactivityStopChoicesMinutes)
+              RadioListTile<int>(
+                value: value,
+                title: Text(
+                    value == 0 ? 'Off' : formatInactivityStop(value)),
               ),
             const SizedBox(height: 8),
           ],

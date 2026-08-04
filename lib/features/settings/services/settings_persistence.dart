@@ -14,6 +14,10 @@ const List<int> kEqBandFrequencies = [60, 230, 910, 3600, 14000];
 
 const double kEqMaxGainDb = 12;
 
+/// Selectable "stop after this long without the user touching anything"
+/// values, in minutes. 0 disables the check.
+const List<int> kInactivityStopChoicesMinutes = [0, 30, 60, 120, 240, 480];
+
 /// User settings that aren't part of the library database.
 class AppSettings {
   const AppSettings({
@@ -23,6 +27,7 @@ class AppSettings {
     this.eqEnabled = false,
     this.eqGainsDb = const [0, 0, 0, 0, 0],
     this.replayGain = ReplayGainMode.off,
+    this.inactivityStopMinutes = 120,
   });
 
   final AppThemeMode themeMode;
@@ -36,6 +41,17 @@ class AppSettings {
   final List<double> eqGainsDb;
   final ReplayGainMode replayGain;
 
+  /// Stop playback after this many minutes without any user interaction —
+  /// a tap in the app, a notification/widget/headset control, or a media
+  /// button. 0 turns the check off. Unlike the sleep timer this keeps
+  /// re-arming, so it only fires when the listener really has walked away.
+  final int inactivityStopMinutes;
+
+  /// Null when disabled.
+  Duration? get inactivityStopTimeout => inactivityStopMinutes > 0
+      ? Duration(minutes: inactivityStopMinutes)
+      : null;
+
   AppSettings copyWith({
     AppThemeMode? themeMode,
     bool? dynamicColor,
@@ -43,6 +59,7 @@ class AppSettings {
     bool? eqEnabled,
     List<double>? eqGainsDb,
     ReplayGainMode? replayGain,
+    int? inactivityStopMinutes,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -51,6 +68,8 @@ class AppSettings {
       eqEnabled: eqEnabled ?? this.eqEnabled,
       eqGainsDb: eqGainsDb ?? this.eqGainsDb,
       replayGain: replayGain ?? this.replayGain,
+      inactivityStopMinutes:
+          inactivityStopMinutes ?? this.inactivityStopMinutes,
     );
   }
 
@@ -61,6 +80,7 @@ class AppSettings {
         'eqEnabled': eqEnabled,
         'eqGainsDb': eqGainsDb,
         'replayGain': replayGain.name,
+        'inactivityStopMinutes': inactivityStopMinutes,
       };
 
   static AppSettings fromJson(Map<String, dynamic> json) {
@@ -94,6 +114,10 @@ class AppSettings {
         (mode) => mode.name == json['replayGain'],
         orElse: () => ReplayGainMode.off,
       ),
+      inactivityStopMinutes: switch (json['inactivityStopMinutes']) {
+        final num minutes when minutes >= 0 => minutes.toInt(),
+        _ => 120,
+      },
     );
   }
 }

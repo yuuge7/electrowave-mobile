@@ -56,6 +56,7 @@ void main() {
         eqEnabled: true,
         eqGainsDb: [6, -3, 0, 4.5, 9],
         replayGain: ReplayGainMode.album,
+        inactivityStopMinutes: 30,
       );
 
       final restored = AppSettings.fromJson(original.toJson());
@@ -66,6 +67,26 @@ void main() {
       expect(restored.eqEnabled, isTrue);
       expect(restored.eqGainsDb, [6, -3, 0, 4.5, 9]);
       expect(restored.replayGain, ReplayGainMode.album);
+      expect(restored.inactivityStopMinutes, 30);
+      expect(restored.inactivityStopTimeout, const Duration(minutes: 30));
+    });
+
+    test('inactivity auto-stop defaults to 2 hours and 0 means off', () {
+      expect(const AppSettings().inactivityStopMinutes, 120);
+      expect(
+        const AppSettings().inactivityStopTimeout,
+        const Duration(hours: 2),
+      );
+      expect(
+        const AppSettings(inactivityStopMinutes: 0).inactivityStopTimeout,
+        isNull,
+      );
+      // A hand-edited negative value must not disable playback instantly.
+      expect(
+        AppSettings.fromJson({'inactivityStopMinutes': -5})
+            .inactivityStopMinutes,
+        120,
+      );
     });
 
     test('falls back to defaults on unknown enum values', () {

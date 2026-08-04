@@ -42,8 +42,56 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
 
   void _restartIdleStopTimer({required bool playing}) {
     _idleStopTimer?.cancel();
-    _idleStopTimer =
-        playing ? null : Timer(_idleStopTimeout, () => unawaited(stop()));
+    if (playing) {
+      _idleStopTimer = null;
+      return;
+    }
+    _idleStopTimer = Timer(_idleStopTimeout, () {
+      // mpv delivers its end-of-file playing=false *after* onCompleted has
+      // already opened and started the next track, so a `false` event is not
+      // proof the player is idle 15 minutes later. Stopping the service on a
+      // stale event kills playback mid-song and tears down the notification
+      // for good — re-check live state before acting on it.
+      if (_player.state.playing) {
+        _restartIdleStopTimer(playing: true);
+        return;
+      }
+      unawaited(stop());
+    });
+  }
+
+  /// "Stop after N without the user touching anything" (Settings → Playback).
+  /// Independent of [_idleStopTimer], which only covers a player left paused:
+  /// this one fires while audio is still playing, on the assumption nobody is
+  /// listening any more. Null when the setting is off.
+  Timer? _inactivityTimer;
+  Duration? _inactivityTimeout;
+
+  /// Applied from the settings controller; null disables the check.
+  void setInactivityTimeout(Duration? timeout) {
+    _inactivityTimeout = timeout;
+    _restartInactivityTimer();
+  }
+
+  /// Push the auto-stop deadline back. Called for anything the user actually
+  /// did: a touch anywhere in the app, a notification / widget / headset
+  /// control, a media button. Deliberately *not* called for automatic track
+  /// advances or interruption resumes — those aren't the user being present.
+  void noteUserActivity() => _restartInactivityTimer();
+
+  void _restartInactivityTimer() {
+    _inactivityTimer?.cancel();
+    final timeout = _inactivityTimeout;
+    if (timeout == null) {
+      _inactivityTimer = null;
+      return;
+    }
+    _inactivityTimer = Timer(timeout, () {
+      // Already stopped or paused: _idleStopTimer owns that case, and firing
+      // here would only race it.
+      if (!_player.state.playing) return;
+      unawaited(stop());
+    });
   }
 
   Future<void> _configureSession() async {
@@ -61,7 +109,7 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
           case AudioInterruptionType.pause:
           case AudioInterruptionType.unknown:
             _playingBeforeInterruption = _player.state.playing;
-            await pause();
+            await _player.pause();
         }
       } else {
         switch (event.type) {
@@ -70,16 +118,19 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
               _ducked = false;
               await _player.setVolume(_volumeBeforeDuck);
             }
+          // `unknown` covers transient focus loss (a navigation prompt, a
+          // notification sound). Treated like `pause`: without a resume here
+          // a momentary interruption silences playback permanently.
           case AudioInterruptionType.pause:
-            if (_playingBeforeInterruption) await play();
           case AudioInterruptionType.unknown:
-            break;
+            if (_playingBeforeInterruption) await _resumePlayback();
+            _playingBeforeInterruption = false;
         }
       }
     });
 
     // Headphones unplugged: pause.
-    session.becomingNoisyEventStream.listen((_) => pause());
+    session.becomingNoisyEventStream.listen((_) => _player.pause());
   }
 
   void _wireStreams() {
@@ -87,7 +138,12 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
     // from (updatePosition, updateTime, speed), so per-tick updates would
     // only churn the platform channel and notification several times a
     // second for the whole play session.
-    _player.stream.playing.listen((playing) {
+    // The event value is deliberately ignored: mpv's end-of-file
+    // playing=false can arrive after the next track is already playing, and
+    // acting on that stale value leaves the notification stuck on a Play
+    // button. `_player.state` is current by the time the event is delivered.
+    _player.stream.playing.listen((_) {
+      final playing = _player.state.playing;
       _broadcast(playing: playing);
       _restartIdleStopTimer(playing: playing);
     });
@@ -149,24 +205,35 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
     ));
     await _player.open(Media(track.filePath), play: false);
     if (_desiredRate != 1.0) await _player.setRate(_desiredRate);
-    if (autoPlay) await play();
+    if (autoPlay) await _resumePlayback();
   }
 
   Future<bool> activateSession() async {
     return await _session?.setActive(true) ?? true;
   }
 
-  @override
-  Future<void> play() async {
+  /// Start audio without treating it as user activity — auto-advance to the
+  /// next track and resume-after-interruption both land here.
+  Future<void> _resumePlayback() async {
     await activateSession();
     await _player.play();
   }
 
   @override
-  Future<void> pause() => _player.pause();
+  Future<void> play() async {
+    noteUserActivity();
+    await _resumePlayback();
+  }
+
+  @override
+  Future<void> pause() {
+    noteUserActivity();
+    return _player.pause();
+  }
 
   @override
   Future<void> seek(Duration position) async {
+    noteUserActivity();
     await _player.seek(position);
     // Position broadcasts are event-driven, so push the new anchor point.
     _broadcast();
@@ -176,6 +243,8 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> stop() async {
     _idleStopTimer?.cancel();
     _idleStopTimer = null;
+    _inactivityTimer?.cancel();
+    _inactivityTimer = null;
     await _player.pause();
     playbackState.add(playbackState.value.copyWith(
       processingState: AudioProcessingState.idle,
@@ -185,10 +254,16 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   @override
-  Future<void> skipToNext() async => onSkipToNext?.call();
+  Future<void> skipToNext() async {
+    noteUserActivity();
+    await onSkipToNext?.call();
+  }
 
   @override
-  Future<void> skipToPrevious() async => onSkipToPrevious?.call();
+  Future<void> skipToPrevious() async {
+    noteUserActivity();
+    await onSkipToPrevious?.call();
+  }
 
   Future<void> setVolume(double volume) => _player.setVolume(volume);
 
@@ -259,6 +334,7 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
 
   Future<void> dispose() {
     _idleStopTimer?.cancel();
+    _inactivityTimer?.cancel();
     return _player.dispose();
   }
 }

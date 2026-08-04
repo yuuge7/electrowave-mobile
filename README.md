@@ -17,6 +17,7 @@ A local music player for Android, built with Flutter. Your files, on your phone 
 - **Background playback** — keeps playing with the screen off, with a media notification, lock screen controls, audio focus handling, and headset/bluetooth button support.
 - **Queue system** — playing a track from any list sets that list as the playback context; a manual queue (*Play next* / *Add to queue*) always takes priority. Reorder or remove from the queue screen.
 - **Sleep timer** — 15/30/45/60 min presets, custom duration, or "end of current track". Countdown chip on the now-playing screen; cancel or extend (+15 min) anytime. Fades out before pausing.
+- **Stop when unattended** — playback stops after a chosen stretch with no interaction at all (Settings → Playback: off / 30 min / 1 / 2 / 4 / 8 h, default 2 h). Any touch in the app, notification, widget or headset button resets it; automatic track advances do not.
 - **Playlists** — create, rename, reorder; add tracks from any track's context menu.
 - **Play tracking** — a listen is logged once a track crosses 25% played, feeding play counts and last-played dates.
 - **Stats ("Wrapped")** — total listening time, top tracks, and top artists, filterable by month, year, or all time.
