@@ -355,18 +355,28 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
     } catch (_) {}
   }
 
-  /// Rebuild the `af` chain: time-stretcher (only off 1.0×, so normal-speed
-  /// playback is bit-for-bit untouched) followed by the EQ bands. An empty
-  /// chain clears all filters, so a disabled/flat EQ costs nothing.
+  /// Rebuild the `af` chain: the EQ bands, then the time-stretcher (only off
+  /// 1.0×, so normal-speed playback is bit-for-bit untouched). An empty chain
+  /// clears all filters, so a disabled/flat EQ costs nothing.
+  ///
+  /// The order is load-bearing. `equalizer` is a libavfilter filter, reached
+  /// through mpv's lavfi bridge; `scaletempo2` is native. Feeding the bridge
+  /// from scaletempo2 makes it reject every frame —
+  ///
+  ///   ffmpeg: mpv_src_default_in: Layout indicates a different number of
+  ///           channels than actually present
+  ///   lavfi: could not pass frame to filter
+  ///
+  /// — which kills the audio chain: the file reports end-of-file immediately,
+  /// so the queue advances track after track in silence. Decoder frames carry
+  /// a layout the bridge accepts, so the EQ has to come first.
   Future<void> _applyFilterChain() async {
     final native = _native;
     if (native == null) return;
     await _probeStretchFilter(native);
 
     final settings = _audioSettings;
-    final filters = <String>[
-      if (_desiredRate != 1.0 && _stretchFilter != null) _stretchFilter!,
-    ];
+    final filters = <String>[];
 
     if (settings != null && settings.eqEnabled) {
       for (var i = 0; i < kEqBandFrequencies.length; i++) {
@@ -378,6 +388,10 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
           ':g=${gain.toStringAsFixed(1)}',
         );
       }
+    }
+
+    if (_desiredRate != 1.0 && _stretchFilter != null) {
+      filters.add(_stretchFilter!);
     }
 
     try {
