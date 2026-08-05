@@ -1,79 +1,72 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The launcher hands the widget a whole cell rectangle, so the card must
-     size itself to its content instead of filling that rectangle — otherwise
-     the background paints empty bars above and below the row. The outer
-     frame is transparent and only exists to centre the card in whatever the
-     launcher allocated. -->
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- The card fills the whole cell rectangle the launcher hands out, so no
+     transparent gap frames it. The row itself is fixed height (34dp art plus
+     padding); gravity centres it inside whatever taller box the launcher
+     allocates. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:padding="6dp">
+
+    <ImageView
+        android:id="@+id/widget_art"
+        android:layout_width="34dp"
+        android:layout_height="34dp"
+        android:contentDescription="@string/widget_art_description"
+        android:scaleType="centerCrop" />
 
     <LinearLayout
-        android:id="@+id/widget_root"
-        android:layout_width="match_parent"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_gravity="center_vertical"
-        android:background="@drawable/widget_background"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:padding="6dp">
+        android:layout_marginStart="8dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
 
-        <ImageView
-            android:id="@+id/widget_art"
-            android:layout_width="34dp"
-            android:layout_height="34dp"
-            android:contentDescription="@string/widget_art_description"
-            android:scaleType="centerCrop" />
-
-        <LinearLayout
-            android:layout_width="0dp"
+        <TextView
+            android:id="@+id/widget_title"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:layout_weight="1"
-            android:orientation="vertical">
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="#FFFFFFFF"
+            android:textSize="12sp"
+            android:textStyle="bold" />
 
-            <TextView
-                android:id="@+id/widget_title"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:textColor="#FFFFFFFF"
-                android:textSize="12sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/widget_artist"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:textColor="#B3FFFFFF"
-                android:textSize="10sp" />
-        </LinearLayout>
-
-        <ImageView
-            android:id="@+id/widget_previous"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:contentDescription="@string/widget_previous"
-            android:padding="6dp"
-            android:src="@drawable/ic_widget_previous" />
-
-        <ImageView
-            android:id="@+id/widget_play_pause"
-            android:layout_width="34dp"
-            android:layout_height="34dp"
-            android:contentDescription="@string/widget_play_pause"
-            android:padding="6dp"
-            android:src="@drawable/ic_widget_play" />
-
-        <ImageView
-            android:id="@+id/widget_next"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:contentDescription="@string/widget_next"
-            android:padding="6dp"
-            android:src="@drawable/ic_widget_next" />
+        <TextView
+            android:id="@+id/widget_artist"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="#B3FFFFFF"
+            android:textSize="10sp" />
     </LinearLayout>
-</FrameLayout>
+
+    <ImageView
+        android:id="@+id/widget_previous"
+        android:layout_width="30dp"
+        android:layout_height="30dp"
+        android:contentDescription="@string/widget_previous"
+        android:padding="6dp"
+        android:src="@drawable/ic_widget_previous" />
+
+    <ImageView
+        android:id="@+id/widget_play_pause"
+        android:layout_width="34dp"
+        android:layout_height="34dp"
+        android:contentDescription="@string/widget_play_pause"
+        android:padding="6dp"
+        android:src="@drawable/ic_widget_play" />
+
+    <ImageView
+        android:id="@+id/widget_next"
+        android:layout_width="30dp"
+        android:layout_height="30dp"
+        android:contentDescription="@string/widget_next"
+        android:padding="6dp"
+        android:src="@drawable/ic_widget_next" />
+</LinearLayout>
