@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
+import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart' hide Track;
 
 import '../../../core/database/database.dart';
@@ -339,6 +340,7 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
           // Exactly one stretcher in the chain: mpv would otherwise insert
           // its own on top of ours and the two would fight over the speed.
           await native.setProperty('audio-pitch-correction', 'no');
+          debugPrint('[electrowave] time-stretch filter: $filter');
           return;
         }
       } catch (_) {
@@ -347,6 +349,7 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
     }
 
     // Nothing usable — leave mpv to do its own (worse) correction.
+    debugPrint('[electrowave] no time-stretch filter available in this libmpv');
     try {
       await native.setProperty('audio-pitch-correction', 'yes');
     } catch (_) {}

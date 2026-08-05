@@ -1,80 +1,79 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Laid out for the 5x2 cell size (~320x110dp): album art on the left, track
-     text stacked over the transport controls on the right. -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/widget_root"
+<!-- The launcher hands the widget a whole cell rectangle, so the card must
+     size itself to its content instead of filling that rectangle — otherwise
+     the background paints empty bars above and below the row. The outer
+     frame is transparent and only exists to centre the card in whatever the
+     launcher allocated. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@drawable/widget_background"
-    android:gravity="center_vertical"
-    android:orientation="horizontal"
-    android:padding="12dp">
-
-    <ImageView
-        android:id="@+id/widget_art"
-        android:layout_width="76dp"
-        android:layout_height="76dp"
-        android:contentDescription="@string/widget_art_description"
-        android:scaleType="centerCrop" />
+    android:layout_height="match_parent">
 
     <LinearLayout
-        android:layout_width="0dp"
+        android:id="@+id/widget_root"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginStart="12dp"
-        android:layout_weight="1"
-        android:orientation="vertical">
+        android:layout_gravity="center_vertical"
+        android:background="@drawable/widget_background"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="8dp">
 
-        <TextView
-            android:id="@+id/widget_title"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="#FFFFFFFF"
-            android:textSize="16sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/widget_artist"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="#B3FFFFFF"
-            android:textSize="13sp" />
+        <ImageView
+            android:id="@+id/widget_art"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:contentDescription="@string/widget_art_description"
+            android:scaleType="centerCrop" />
 
         <LinearLayout
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
 
-            <ImageView
-                android:id="@+id/widget_previous"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:contentDescription="@string/widget_previous"
-                android:padding="8dp"
-                android:src="@drawable/ic_widget_previous" />
+            <TextView
+                android:id="@+id/widget_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="#FFFFFFFF"
+                android:textSize="13sp"
+                android:textStyle="bold" />
 
-            <ImageView
-                android:id="@+id/widget_play_pause"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:layout_marginStart="8dp"
-                android:layout_marginEnd="8dp"
-                android:contentDescription="@string/widget_play_pause"
-                android:padding="8dp"
-                android:src="@drawable/ic_widget_play" />
-
-            <ImageView
-                android:id="@+id/widget_next"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:contentDescription="@string/widget_next"
-                android:padding="8dp"
-                android:src="@drawable/ic_widget_next" />
+            <TextView
+                android:id="@+id/widget_artist"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="#B3FFFFFF"
+                android:textSize="11sp" />
         </LinearLayout>
+
+        <ImageView
+            android:id="@+id/widget_previous"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:contentDescription="@string/widget_previous"
+            android:padding="7dp"
+            android:src="@drawable/ic_widget_previous" />
+
+        <ImageView
+            android:id="@+id/widget_play_pause"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:contentDescription="@string/widget_play_pause"
+            android:padding="7dp"
+            android:src="@drawable/ic_widget_play" />
+
+        <ImageView
+            android:id="@+id/widget_next"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:contentDescription="@string/widget_next"
+            android:padding="7dp"
+            android:src="@drawable/ic_widget_next" />
     </LinearLayout>
-</LinearLayout>
+</FrameLayout>

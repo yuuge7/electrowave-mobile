@@ -8,6 +8,7 @@ import '../../library/providers/browse_providers.dart';
 import '../../library/providers/library_providers.dart';
 import '../../player/views/sleep_timer_sheet.dart';
 import '../providers/settings_providers.dart';
+import '../services/notification_diagnostics.dart';
 import '../services/settings_persistence.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -261,23 +262,25 @@ class _ThemeSheet extends ConsumerWidget {
         onChanged: (mode) {
           if (mode != null) controller.setThemeMode(mode);
         },
-        child: const Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            RadioListTile<AppThemeMode>(
-              value: AppThemeMode.system,
-              title: Text('Follow system'),
-            ),
-            RadioListTile<AppThemeMode>(
-              value: AppThemeMode.light,
-              title: Text('Light'),
-            ),
-            RadioListTile<AppThemeMode>(
-              value: AppThemeMode.dark,
-              title: Text('Dark'),
-            ),
-            SizedBox(height: 8),
-          ],
+        child: const SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              RadioListTile<AppThemeMode>(
+                value: AppThemeMode.system,
+                title: Text('Follow system'),
+              ),
+              RadioListTile<AppThemeMode>(
+                value: AppThemeMode.light,
+                title: Text('Light'),
+              ),
+              RadioListTile<AppThemeMode>(
+                value: AppThemeMode.dark,
+                title: Text('Dark'),
+              ),
+              SizedBox(height: 8),
+            ],
+          ),
         ),
       ),
     );
@@ -301,16 +304,20 @@ class _SpeedSheet extends ConsumerWidget {
         onChanged: (value) {
           if (value != null) controller.setPlaybackRate(value);
         },
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final value in _rates)
-              RadioListTile<double>(
-                value: value,
-                title: Text(value == 1.0 ? 'Normal (1×)' : '$value×'),
-              ),
-            const SizedBox(height: 8),
-          ],
+        // Scrollable: seven rows plus the mini player and the navigation bar
+        // overflow a short screen otherwise.
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final value in _rates)
+                RadioListTile<double>(
+                  value: value,
+                  title: Text(value == 1.0 ? 'Normal (1×)' : '$value×'),
+                ),
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
       ),
     );
@@ -339,26 +346,30 @@ class _InactivityStopSheet extends ConsumerWidget {
         onChanged: (value) {
           if (value != null) controller.setInactivityStopMinutes(value);
         },
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Text(
-                'Playback stops if you have not touched the app, the '
-                'notification, the widget or a headset button for this long. '
-                'Skipping tracks on its own does not count.',
-                style: Theme.of(context).textTheme.bodySmall,
+        // Scrollable: the blurb plus six rows, the mini player and the
+        // navigation bar overflow a short screen otherwise.
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Text(
+                  'Playback stops if you have not touched the app, the '
+                  'notification, the widget or a headset button for this '
+                  'long. Skipping tracks on its own does not count.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
               ),
-            ),
-            for (final value in kInactivityStopChoicesMinutes)
-              RadioListTile<int>(
-                value: value,
-                title: Text(
-                    value == 0 ? 'Off' : formatInactivityStop(value)),
-              ),
-            const SizedBox(height: 8),
-          ],
+              for (final value in kInactivityStopChoicesMinutes)
+                RadioListTile<int>(
+                  value: value,
+                  title:
+                      Text(value == 0 ? 'Off' : formatInactivityStop(value)),
+                ),
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
       ),
     );
@@ -377,8 +388,10 @@ class _NotificationPermissionTile extends ConsumerStatefulWidget {
 }
 
 class _NotificationPermissionTileState
-    extends ConsumerState<_NotificationPermissionTile> with WidgetsBindingObserver {
-  bool? _granted;
+    extends ConsumerState<_NotificationPermissionTile>
+    with WidgetsBindingObserver {
+  final NotificationDiagnostics _diagnostics = NotificationDiagnostics();
+  NotificationBlock? _block;
 
   @override
   void initState() {
@@ -395,45 +408,58 @@ class _NotificationPermissionTileState
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Picks up a grant made on the system settings page we sent them to.
+    // Picks up a change made on the system settings page we sent them to.
     if (state == AppLifecycleState.resumed) _refresh();
   }
 
   Future<void> _refresh() async {
-    final granted =
-        await ref.read(permissionServiceProvider).hasNotificationPermission();
-    if (mounted) setState(() => _granted = granted);
+    final block = await _diagnostics.check();
+    if (mounted) setState(() => _block = block);
+  }
+
+  Future<void> _fix() async {
+    // Only the app-level block can still be resolved by the runtime dialog,
+    // and only while it hasn't been permanently denied. Everything else has
+    // to be switched back on by hand.
+    if (_block == NotificationBlock.app) {
+      if (await ref.read(permissionServiceProvider).requestNotifications()) {
+        await _refresh();
+        return;
+      }
+    }
+    await _diagnostics.openSettings();
+    await _refresh();
   }
 
   @override
   Widget build(BuildContext context) {
-    final granted = _granted;
+    final block = _block;
+    final ok = block == NotificationBlock.none;
+
     return ListTile(
       leading: Icon(
-        granted == false
-            ? Icons.notifications_off_outlined
-            : Icons.notifications_active_outlined,
-        color: granted == false ? Theme.of(context).colorScheme.error : null,
+        ok ? Icons.notifications_active_outlined : Icons.notifications_off_outlined,
+        color: ok || block == null ? null : Theme.of(context).colorScheme.error,
       ),
       title: const Text('Playback notification'),
-      subtitle: Text(granted == true
-          ? 'Notification and lock screen controls are allowed'
-          : 'Blocked — playback controls cannot be shown. Tap to allow'),
-      trailing: granted == true
+      subtitle: Text(switch (block) {
+        null => 'Checking…',
+        NotificationBlock.none =>
+          'Notification and lock screen controls are allowed',
+        NotificationBlock.app =>
+          'Notifications are off for Electrowave. Tap to allow',
+        NotificationBlock.channel =>
+          'The "Playback" notification category is switched off — that hides '
+              'the player controls even though the permission is granted. '
+              'Tap to turn it back on',
+        NotificationBlock.notCreatedYet =>
+          'Play something once to create the notification',
+      }),
+      trailing: ok
           ? Icon(Icons.check_circle,
               color: Theme.of(context).colorScheme.primary)
           : null,
-      onTap: granted == true
-          ? null
-          : () async {
-              final service = ref.read(permissionServiceProvider);
-              // A permanently denied permission no longer raises the system
-              // dialog, so fall through to the app's settings page.
-              if (!await service.requestNotifications()) {
-                await service.openSettings();
-              }
-              await _refresh();
-            },
+      onTap: ok || block == NotificationBlock.notCreatedYet ? null : _fix,
     );
   }
 }
