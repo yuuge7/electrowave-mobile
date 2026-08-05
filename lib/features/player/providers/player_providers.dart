@@ -101,6 +101,23 @@ class PlayerController extends Notifier<PlayerQueueState> {
   bool _scrobbled = false;
   StreamSubscription<Duration>? _positionSub;
 
+  // Measured listening time. Derived from how far the position actually
+  // advanced rather than from wall-clock time, so pauses cost nothing and the
+  // figure means "this much audio was heard" at any playback speed.
+  int? _listenSessionId;
+  int _listenedMs = 0;
+  int _savedListenedMs = 0;
+  Duration? _lastListenPosition;
+
+  /// Position ticks arrive a few times a second; anything bigger than this is
+  /// a seek or a track change, not listening.
+  static const _maxListenStep = Duration(seconds: 2);
+
+  /// Writes are throttled: losing the tail of a session to a kill costs a few
+  /// seconds of precision, and the row is topped up on every track change.
+  static const _listenFlushInterval = Duration(seconds: 15);
+  DateTime _lastListenFlush = DateTime.now();
+
   @override
   PlayerQueueState build() {
     _handler.onSkipToNext = () => next();
@@ -109,6 +126,7 @@ class PlayerController extends Notifier<PlayerQueueState> {
 
     _positionSub = _handler.player.stream.position.listen(_onPosition);
     ref.onDispose(() => _positionSub?.cancel());
+    ref.onDispose(() => unawaited(_flushListening()));
 
     // Keep the home screen widget in step with play/pause. Track changes push
     // their own update from _loadAndPlay.
@@ -424,6 +442,9 @@ class PlayerController extends Notifier<PlayerQueueState> {
       return;
     }
     _scrobbled = false;
+    // Closes the outgoing track's session while it is still `state.current`,
+    // so its time is booked against the right track.
+    await _resetListening();
     state = state.copyWith(current: track);
     await _handler.loadTrack(track);
     unawaited(_saveState());
@@ -497,7 +518,52 @@ class PlayerController extends Notifier<PlayerQueueState> {
       unawaited(_db.recordPlay(track.id));
     }
 
+    _accumulateListening(position);
     unawaited(_persistence.saveThrottled(_snapshot()));
+  }
+
+  // ---------------------------------------------------------------------
+  // Measured listening time (Stats → "Time listened")
+  // ---------------------------------------------------------------------
+
+  /// Adds the audio that played between two position ticks. Seeks, restarts
+  /// and track changes all show up as steps outside [_maxListenStep] and are
+  /// dropped rather than counted.
+  void _accumulateListening(Duration position) {
+    final previous = _lastListenPosition;
+    _lastListenPosition = position;
+    if (previous == null) return;
+
+    final step = position - previous;
+    if (step <= Duration.zero || step > _maxListenStep) return;
+
+    _listenedMs += step.inMilliseconds;
+    if (DateTime.now().difference(_lastListenFlush) >= _listenFlushInterval) {
+      unawaited(_flushListening());
+    }
+  }
+
+  /// Persists the running total. Idempotent — it writes an absolute value, so
+  /// calling it more often than needed only costs a write.
+  Future<void> _flushListening() async {
+    _lastListenFlush = DateTime.now();
+    final track = state.current;
+    if (track == null || _listenedMs == _savedListenedMs) return;
+    // Ignore stretches too short to be listening (a tap through a queue).
+    if (_listenedMs < 1000) return;
+
+    _listenSessionId ??= await _db.startListeningSession(track.id);
+    _savedListenedMs = _listenedMs;
+    await _db.saveListenedMs(_listenSessionId!, _listenedMs);
+  }
+
+  /// Closes the current session and starts counting again for the next track.
+  Future<void> _resetListening() async {
+    await _flushListening();
+    _listenSessionId = null;
+    _listenedMs = 0;
+    _savedListenedMs = 0;
+    _lastListenPosition = null;
   }
 
   PersistedPlayback _snapshot() {

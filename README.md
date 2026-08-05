@@ -21,6 +21,7 @@ A local music player for Android, built with Flutter. Your files, on your phone 
 - **Playlists** — create, rename, reorder; add tracks from any track's context menu.
 - **Play tracking** — a listen is logged once a track crosses 25% played, feeding play counts and last-played dates.
 - **Stats ("Wrapped")** — total listening time, top tracks, and top artists, filterable by month, year, or all time.
+- **Time listened** — a separate stats category ranking tracks by audio that *actually* played, measured from playback rather than inferred from play counts, so a skipped track only counts for the part you heard.
 - **Backup & restore** — export the SQLite database anywhere; imports are staged and applied safely on the next launch.
 
 ## Permissions
@@ -78,7 +79,8 @@ Non-obvious constraints — breaking these produces bugs that only show up after
   ```
 
   Paste that as the secret value. Do **not** use `certutil -encode`: it wraps the output in `-----BEGIN CERTIFICATE-----` lines, which `base64 -d` rejects. The workflow verifies the restored keystore with `keytool` and prints its size and SHA-256, so a mismatch fails at the restore step with a readable message instead of surfacing as a DER/ASN.1 parse error (`Tag number over 30 is not supported`) inside `:app:packageRelease`.
-- Run `dart run build_runner build` after editing the drift schema in `lib/core/database/database.dart`. The schema is at **v2**; `MigrationStrategy` adds `isFavorite`, `trackNumber`, `discNumber` and `year`, so existing installs upgrade in place.
+- Run `dart run build_runner build` after editing the drift schema in `lib/core/database/database.dart`. The schema is at **v3**; `MigrationStrategy` adds `isFavorite`, `trackNumber`, `discNumber` and `year` (v2) and creates `listening_sessions` (v3), so existing installs upgrade in place.
+- **`PlaybackHistory` and `ListeningSessions` measure different things and must not be merged.** Every stat built on `PlaybackHistory` multiplies its rows by the track's full `durationMs`, so a track skipped after ten seconds counts as a full listen — that is what "Top tracks" and the headline total have always meant. `ListeningSessions` sums position deltas the player actually emitted. The two disagree by design, and the gap is largest for anyone who skips a lot.
 - **EQ and ReplayGain run inside libmpv, not Android.** media_kit doesn't expose the Android audio session id, so the platform `AudioEffect` API (Equalizer/BassBoost) is unreachable. `applyAudioSettings` builds an mpv `af` chain of `equalizer` filters and sets mpv's own `replaygain` property instead — same behaviour on every platform, no session id needed.
 - Playback speed must be re-applied after every `Player.open()`; mpv resets it per file. The handler keeps `_desiredRate` for exactly that.
 - **The handler owns mpv's `af` chain outright.** media_kit's `setRate` only sets `speed` and leaves stretching to `audio-pitch-correction`, which inserts plain `scaletempo` at a 60 ms stride — audibly warbly on music. `_applyFilterChain` inserts a tuned `scaletempo2` itself (only when the rate is off 1.0×) and sets `audio-pitch-correction=no`, so exactly one stretcher is in the chain. `NativePlayer.setProperty` discards libmpv's return code, so `_probeStretchFilter` reads `af` back to find out whether a filter actually exists in this build — mpv rejects the entire list if one name is unknown.

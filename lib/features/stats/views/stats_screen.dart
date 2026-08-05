@@ -16,6 +16,9 @@ class StatsScreen extends ConsumerWidget {
     final totalMs = ref.watch(totalListeningMsProvider).value ?? 0;
     final topTracks = ref.watch(topTracksProvider).value ?? const [];
     final topArtists = ref.watch(topArtistsProvider).value ?? const [];
+    final byListeningTime =
+        ref.watch(tracksByListeningTimeProvider).value ?? const [];
+    final listenedMs = ref.watch(totalListenedMsProvider).value ?? 0;
     final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
@@ -95,6 +98,55 @@ class StatsScreen extends ConsumerWidget {
                           stat.track,
                           [for (final s in topTracks) s.track],
                           'Top tracks',
+                        ),
+              ),
+          ],
+          if (byListeningTime.isNotEmpty) ...[
+            _sectionHeader(context, 'Time listened'),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text(
+                'Audio that actually played, measured — skips and unfinished '
+                'tracks count only for the part you heard. '
+                '${formatListeningTime(Duration(milliseconds: listenedMs))} '
+                'in total.',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: scheme.onSurfaceVariant),
+              ),
+            ),
+            for (final (index, stat) in byListeningTime.take(10).indexed)
+              ListTile(
+                leading: SizedBox(
+                  width: 72,
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 24,
+                        child: Text(
+                          '${index + 1}',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleMedium
+                              ?.copyWith(color: scheme.primary),
+                        ),
+                      ),
+                      ArtThumb(artPath: stat.track.albumArtPath, size: 44),
+                    ],
+                  ),
+                ),
+                title: Text(stat.track.title,
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: Text(stat.track.artist,
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                trailing: Text(formatListeningTime(
+                    Duration(milliseconds: stat.listenedMs))),
+                onTap: () =>
+                    ref.read(playerControllerProvider.notifier).playFromList(
+                          stat.track,
+                          [for (final s in byListeningTime) s.track],
+                          'Time listened',
                         ),
               ),
           ],

@@ -37,6 +37,21 @@ class PlaybackHistory extends Table {
   DateTimeColumn get playedAt => dateTime().withDefault(currentDateAndTime)();
 }
 
+/// Measured listening time, one row per stretch of a track actually played.
+///
+/// Deliberately separate from [PlaybackHistory]: that table records *that* a
+/// play happened, and every stat built on it multiplies those rows by the
+/// track's full duration — a track skipped after ten seconds counts the same
+/// as one heard to the end. This table counts the audio that really came out,
+/// so the two never have to agree and the existing stats keep their meaning.
+@DataClassName('ListeningSessionEntry')
+class ListeningSessions extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get trackId => integer().references(Tracks, #id)();
+  DateTimeColumn get startedAt => dateTime().withDefault(currentDateAndTime)();
+  IntColumn get listenedMs => integer().withDefault(const Constant(0))();
+}
+
 class Playlists extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get name => text()();
@@ -114,6 +129,14 @@ class TopTrackStat {
   final int playCount;
 }
 
+/// Measured listening time for one track, from [ListeningSessions].
+class TrackListeningStat {
+  const TrackListeningStat({required this.track, required this.listenedMs});
+
+  final Track track;
+  final int listenedMs;
+}
+
 class TopArtistStat {
   const TopArtistStat({
     required this.artist,
@@ -144,14 +167,20 @@ Future<File> databaseFile() async {
   return File(p.join(dir.path, kDatabaseFileName));
 }
 
-@DriftDatabase(tables: [Tracks, PlaybackHistory, Playlists, PlaylistTracks])
+@DriftDatabase(tables: [
+  Tracks,
+  PlaybackHistory,
+  ListeningSessions,
+  Playlists,
+  PlaylistTracks,
+])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -161,6 +190,11 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(tracks, tracks.trackNumber);
             await m.addColumn(tracks, tracks.discNumber);
             await m.addColumn(tracks, tracks.year);
+          }
+          if (from < 3) {
+            // Measured listening time starts accumulating from the upgrade;
+            // there is nothing in the old data to backfill it from.
+            await m.createTable(listeningSessions);
           }
         },
       );
@@ -523,6 +557,8 @@ class AppDatabase extends _$AppDatabase {
           .go();
       await (delete(playbackHistory)..where((h) => h.trackId.equals(trackId)))
           .go();
+      await (delete(listeningSessions)..where((s) => s.trackId.equals(trackId)))
+          .go();
       await (delete(tracks)..where((t) => t.id.equals(trackId))).go();
     });
   }
@@ -558,12 +594,27 @@ class AppDatabase extends _$AppDatabase {
   Future<void> clearPlayHistory() async {
     await transaction(() async {
       await delete(playbackHistory).go();
+      await delete(listeningSessions).go();
       await update(tracks).write(const TracksCompanion(
         totalPlayCount: Value(0),
         lastPlayed: Value(null),
       ));
     });
   }
+
+  /// Opens a row for the stretch of [trackId] about to be played and returns
+  /// its id; the caller tops up [saveListenedMs] as audio actually comes out.
+  Future<int> startListeningSession(int trackId) =>
+      into(listeningSessions).insert(
+        ListeningSessionsCompanion(trackId: Value(trackId)),
+      );
+
+  /// Absolute value, not a delta — the caller owns the running total, so a
+  /// dropped write costs precision rather than corrupting the count.
+  Future<void> saveListenedMs(int sessionId, int listenedMs) =>
+      (update(listeningSessions)..where((s) => s.id.equals(sessionId))).write(
+        ListeningSessionsCompanion(listenedMs: Value(listenedMs)),
+      );
 
   // -------------------------------------------------------------------------
   // Stats
@@ -615,6 +666,56 @@ class AppDatabase extends _$AppDatabase {
               playCount: row.read(plays) ?? 0,
             ))
         .watch();
+  }
+
+  Expression<bool> _listenedInRange(DateTime? from, DateTime? to) {
+    Expression<bool> expr = const Constant(true);
+    if (from != null) {
+      expr = expr & listeningSessions.startedAt.isBiggerOrEqualValue(from);
+    }
+    if (to != null) {
+      expr = expr & listeningSessions.startedAt.isSmallerThanValue(to);
+    }
+    return expr;
+  }
+
+  /// Tracks by measured listening time. Unlike [watchTopTracks] this counts
+  /// the audio that actually played, so a track left on repeat outranks one
+  /// that was started and skipped many times.
+  Stream<List<TrackListeningStat>> watchTracksByListeningTime({
+    DateTime? from,
+    DateTime? to,
+    int limit = 20,
+  }) {
+    final listened = listeningSessions.listenedMs.sum();
+    final query = select(tracks).join([
+      innerJoin(
+        listeningSessions,
+        listeningSessions.trackId.equalsExp(tracks.id),
+        useColumns: false,
+      ),
+    ])
+      ..addColumns([listened])
+      ..where(_listenedInRange(from, to))
+      ..groupBy([tracks.id])
+      ..orderBy([OrderingTerm.desc(listened)])
+      ..limit(limit);
+    return query
+        .map((row) => TrackListeningStat(
+              track: row.readTable(tracks),
+              listenedMs: row.read(listened) ?? 0,
+            ))
+        .watch();
+  }
+
+  /// Measured counterpart to [watchTotalListeningMs], which estimates from
+  /// play counts instead.
+  Stream<int> watchTotalListenedMs({DateTime? from, DateTime? to}) {
+    final total = listeningSessions.listenedMs.sum();
+    final query = selectOnly(listeningSessions)
+      ..addColumns([total])
+      ..where(_listenedInRange(from, to));
+    return query.map((row) => row.read(total) ?? 0).watchSingle();
   }
 
   Stream<List<TopArtistStat>> watchTopArtists({

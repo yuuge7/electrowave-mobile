@@ -73,6 +73,23 @@ final topTracksProvider = StreamProvider<List<TopTrackStat>>((ref) {
       .watchTopTracks(from: period.from, to: period.to, limit: 25);
 });
 
+/// Measured listening time per track — counts audio that actually played,
+/// unlike [topTracksProvider] which ranks by number of plays.
+final tracksByListeningTimeProvider =
+    StreamProvider<List<TrackListeningStat>>((ref) {
+  final period = ref.watch(statsPeriodProvider);
+  return ref
+      .watch(databaseProvider)
+      .watchTracksByListeningTime(from: period.from, to: period.to, limit: 25);
+});
+
+final totalListenedMsProvider = StreamProvider<int>((ref) {
+  final period = ref.watch(statsPeriodProvider);
+  return ref
+      .watch(databaseProvider)
+      .watchTotalListenedMs(from: period.from, to: period.to);
+});
+
 final topArtistsProvider = StreamProvider<List<TopArtistStat>>((ref) {
   final period = ref.watch(statsPeriodProvider);
   return ref
