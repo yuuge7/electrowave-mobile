@@ -1,15 +1,16 @@
-<!-- 4x1 cells. The launcher grid formula is 70 * cells - 30, so 4 columns is
-     250dp and 1 row is 40dp; the layout needs a little more than one row's
-     nominal height, hence the 66dp minimum. targetCellWidth/Height are what
-     Android 12+ actually places by, minWidth/minHeight the fallback below. -->
+<!-- 3x1 cells. The launcher grid formula is 70 * cells - 30, so 3 columns is
+     180dp and 1 row is 40dp. The card is 46dp tall (34dp art + 6dp padding
+     either side), so a single row is enough and minHeight stays at the row
+     nominal. targetCellWidth/Height are what Android 12+ actually places by,
+     minWidth/minHeight the fallback below. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/widget_description"
     android:initialLayout="@layout/electrowave_widget"
-    android:minHeight="66dp"
-    android:minWidth="250dp"
+    android:minHeight="40dp"
+    android:minWidth="180dp"
     android:previewLayout="@layout/electrowave_widget"
     android:resizeMode="horizontal|vertical"
     android:targetCellHeight="1"
-    android:targetCellWidth="4"
+    android:targetCellWidth="3"
     android:updatePeriodMillis="0"
     android:widgetCategory="home_screen" />
