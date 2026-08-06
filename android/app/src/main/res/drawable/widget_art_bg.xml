@@ -1,0 +1,7 @@
+<!-- Doubles as the rounding mask (the art ImageView clips to this outline) and
+     as the backdrop behind the fallback icon when a track has no art. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="12dp" />
+    <solid android:color="#1FFFFFFF" />
+</shape>

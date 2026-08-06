@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The card fills the whole cell rectangle the launcher hands out, so no
-     transparent gap frames it. The row itself is fixed height (34dp art plus
-     padding); gravity centres it inside whatever taller box the launcher
-     allocates. -->
+<!-- The card fills the whole cell rectangle the launcher hands out, and the
+     art stretches with it: full height, squared off by adjustViewBounds and
+     rounded by clipping to its background outline. The launcher's row height
+     varies a lot between devices, so nothing here assumes a fixed card
+     height — only the controls keep a fixed size, centred vertically. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
@@ -10,19 +11,23 @@
     android:background="@drawable/widget_background"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:padding="6dp">
+    android:padding="10dp">
 
     <ImageView
         android:id="@+id/widget_art"
-        android:layout_width="34dp"
-        android:layout_height="34dp"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:adjustViewBounds="true"
+        android:background="@drawable/widget_art_bg"
+        android:clipToOutline="true"
         android:contentDescription="@string/widget_art_description"
         android:scaleType="centerCrop" />
 
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="8dp"
+        android:layout_marginEnd="6dp"
+        android:layout_marginStart="12dp"
         android:layout_weight="1"
         android:orientation="vertical">
 
@@ -33,7 +38,7 @@
             android:ellipsize="end"
             android:maxLines="1"
             android:textColor="#FFFFFFFF"
-            android:textSize="12sp"
+            android:textSize="14sp"
             android:textStyle="bold" />
 
         <TextView
@@ -41,32 +46,36 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:ellipsize="end"
+            android:layout_marginTop="2dp"
             android:maxLines="1"
-            android:textColor="#B3FFFFFF"
-            android:textSize="10sp" />
+            android:textColor="#99FFFFFF"
+            android:textSize="11sp" />
     </LinearLayout>
 
     <ImageView
         android:id="@+id/widget_previous"
-        android:layout_width="30dp"
-        android:layout_height="30dp"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
         android:contentDescription="@string/widget_previous"
-        android:padding="6dp"
+        android:padding="9dp"
         android:src="@drawable/ic_widget_previous" />
 
+    <!-- Tinted dark because it sits on the brand-coloured circle. -->
     <ImageView
         android:id="@+id/widget_play_pause"
-        android:layout_width="34dp"
-        android:layout_height="34dp"
+        android:layout_width="46dp"
+        android:layout_height="46dp"
+        android:background="@drawable/widget_play_bg"
         android:contentDescription="@string/widget_play_pause"
-        android:padding="6dp"
-        android:src="@drawable/ic_widget_play" />
+        android:padding="11dp"
+        android:src="@drawable/ic_widget_play"
+        android:tint="#FF0D1B1E" />
 
     <ImageView
         android:id="@+id/widget_next"
-        android:layout_width="30dp"
-        android:layout_height="30dp"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
         android:contentDescription="@string/widget_next"
-        android:padding="6dp"
+        android:padding="9dp"
         android:src="@drawable/ic_widget_next" />
 </LinearLayout>

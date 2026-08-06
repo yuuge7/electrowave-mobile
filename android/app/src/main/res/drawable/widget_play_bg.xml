@@ -1,0 +1,6 @@
+<!-- Brand seed (kBrandSeed in lib/app.dart) so the widget's primary action
+     matches the app's accent. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="#FF00E5CC" />
+</shape>

@@ -49,8 +49,13 @@ class ElectrowaveWidgetProvider : HomeWidgetProvider() {
                 val art = artPath?.let { decodeArt(it) }
                 if (art != null) {
                     setImageViewBitmap(R.id.widget_art, art)
+                    setViewPadding(R.id.widget_art, 0, 0, 0, 0)
                 } else {
                     setImageViewResource(R.id.widget_art, R.drawable.ic_stat_electrowave)
+                    // centerCrop would blow the logo up to fill the square, so
+                    // inset it instead and let the art background show around it.
+                    val inset = (FALLBACK_INSET_DP * context.resources.displayMetrics.density).toInt()
+                    setViewPadding(R.id.widget_art, inset, inset, inset, inset)
                 }
 
                 setOnClickPendingIntent(R.id.widget_root, openAppIntent(context))
@@ -131,5 +136,6 @@ class ElectrowaveWidgetProvider : HomeWidgetProvider() {
 
     private companion object {
         const val TARGET_ART_PX = 192
+        const val FALLBACK_INSET_DP = 14
     }
 }
