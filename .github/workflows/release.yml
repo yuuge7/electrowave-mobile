@@ -3,9 +3,18 @@ name: Release
 on:
   push:
     branches: [main]
+  # Manual trigger, for re-cutting a release without an empty commit.
+  workflow_dispatch:
 
 permissions:
   contents: write
+
+env:
+  # Version names are MAJOR.<runs since the series started>, so run 10 is the
+  # first 2.x release. When starting a new major series, bump MAJOR and set
+  # MINOR_BASE to the run number that should become <MAJOR>.0.
+  MAJOR: '2'
+  MINOR_BASE: '10'
 
 jobs:
   release:
@@ -26,7 +35,13 @@ jobs:
 
       - name: Compute version
         id: version
-        run: echo "version=1.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+        run: |
+          set -euo pipefail
+          echo "version=${MAJOR}.$(( ${{ github.run_number }} - MINOR_BASE ))" >> "$GITHUB_OUTPUT"
+          # Offset so a locally sideloaded test build can never out-rank a
+          # release: Android refuses to install a lower versionCode over a
+          # higher one, and hand-built APKs use small numbers.
+          echo "code=$(( 100 + ${{ github.run_number }} ))" >> "$GITHUB_OUTPUT"
 
       - name: Restore signing config
         env:
@@ -81,7 +96,7 @@ jobs:
         run: >
           flutter build apk --release
           --build-name=${{ steps.version.outputs.version }}
-          --build-number=${{ github.run_number }}
+          --build-number=${{ steps.version.outputs.code }}
 
       - name: Rename APK
         run: >
