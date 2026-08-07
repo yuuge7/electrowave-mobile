@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../shared/utils/format.dart';
@@ -22,7 +23,18 @@ class StatsScreen extends ConsumerWidget {
     final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Your Wrapped')),
+      appBar: AppBar(
+        title: const Text('Your Wrapped'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.calendar_month),
+            tooltip: 'Year in review',
+            onPressed: () => context.push(
+              '/stats/year/${period.year ?? DateTime.now().year}',
+            ),
+          ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.only(bottom: 24),
         children: [
@@ -41,17 +53,17 @@ class StatsScreen extends ConsumerWidget {
                   const SizedBox(height: 12),
                   Text(
                     formatListeningTime(Duration(milliseconds: totalMs)),
-                    style: Theme.of(context)
-                        .textTheme
-                        .headlineMedium
-                        ?.copyWith(fontWeight: FontWeight.bold),
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 4),
-                  Text('listened ${_periodLabel(period)}',
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodyMedium
-                          ?.copyWith(color: scheme.onSurfaceVariant)),
+                  Text(
+                    'listened ${_periodLabel(period)}',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -78,9 +90,7 @@ class StatsScreen extends ConsumerWidget {
                         width: 24,
                         child: Text(
                           '${index + 1}',
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
+                          style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(color: scheme.primary),
                         ),
                       ),
@@ -88,17 +98,23 @@ class StatsScreen extends ConsumerWidget {
                     ],
                   ),
                 ),
-                title: Text(stat.track.title,
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
-                subtitle: Text(stat.track.artist,
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                title: Text(
+                  stat.track.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: Text(
+                  stat.track.artist,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
                 trailing: Text('${stat.playCount} plays'),
                 onTap: () =>
                     ref.read(playerControllerProvider.notifier).playFromList(
-                          stat.track,
-                          [for (final s in topTracks) s.track],
-                          'Top tracks',
-                        ),
+                      stat.track,
+                      [for (final s in topTracks) s.track],
+                      'Top tracks',
+                    ),
               ),
           ],
           if (byListeningTime.isNotEmpty) ...[
@@ -106,14 +122,15 @@ class StatsScreen extends ConsumerWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: Text(
-                'Audio that actually played, measured — skips and unfinished '
-                'tracks count only for the part you heard. '
+                'Time you actually spent listening, measured from playback — '
+                'skips and unfinished tracks count only for the part you '
+                'heard, and a track played at 1.5× costs less of it than the '
+                'same track at 1×. '
                 '${formatListeningTime(Duration(milliseconds: listenedMs))} '
                 'in total.',
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: scheme.onSurfaceVariant),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
               ),
             ),
             for (final (index, stat) in byListeningTime.take(10).indexed)
@@ -126,9 +143,7 @@ class StatsScreen extends ConsumerWidget {
                         width: 24,
                         child: Text(
                           '${index + 1}',
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
+                          style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(color: scheme.primary),
                         ),
                       ),
@@ -136,18 +151,25 @@ class StatsScreen extends ConsumerWidget {
                     ],
                   ),
                 ),
-                title: Text(stat.track.title,
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
-                subtitle: Text(stat.track.artist,
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
-                trailing: Text(formatListeningTime(
-                    Duration(milliseconds: stat.listenedMs))),
+                title: Text(
+                  stat.track.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: Text(
+                  stat.track.artist,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: Text(
+                  formatListeningTime(Duration(milliseconds: stat.listenedMs)),
+                ),
                 onTap: () =>
                     ref.read(playerControllerProvider.notifier).playFromList(
-                          stat.track,
-                          [for (final s in byListeningTime) s.track],
-                          'Time listened',
-                        ),
+                      stat.track,
+                      [for (final s in byListeningTime) s.track],
+                      'Time listened',
+                    ),
               ),
           ],
           if (topArtists.isNotEmpty) ...[
@@ -162,24 +184,28 @@ class StatsScreen extends ConsumerWidget {
                         width: 24,
                         child: Text(
                           '${index + 1}',
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
+                          style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(color: scheme.primary),
                         ),
                       ),
                       CircleAvatar(
-                        child: Text(stat.artist.isNotEmpty
-                            ? stat.artist[0].toUpperCase()
-                            : '?'),
+                        child: Text(
+                          stat.artist.isNotEmpty
+                              ? stat.artist[0].toUpperCase()
+                              : '?',
+                        ),
                       ),
                     ],
                   ),
                 ),
-                title: Text(stat.artist,
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
-                subtitle: Text(formatListeningTime(
-                    Duration(milliseconds: stat.totalMs))),
+                title: Text(
+                  stat.artist,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: Text(
+                  formatListeningTime(Duration(milliseconds: stat.totalMs)),
+                ),
                 trailing: Text('${stat.playCount} plays'),
               ),
           ],
@@ -193,9 +219,9 @@ class StatsScreen extends ConsumerWidget {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
       child: Text(
         text,
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
+        style: Theme.of(
+          context,
+        ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
       ),
     );
   }
@@ -229,7 +255,9 @@ class _PeriodPicker extends ConsumerWidget {
         SegmentedButton<StatsPeriodKind>(
           segments: const [
             ButtonSegment(
-                value: StatsPeriodKind.allTime, label: Text('All time')),
+              value: StatsPeriodKind.allTime,
+              label: Text('All time'),
+            ),
             ButtonSegment(value: StatsPeriodKind.year, label: Text('Year')),
             ButtonSegment(value: StatsPeriodKind.month, label: Text('Month')),
           ],
@@ -242,7 +270,9 @@ class _PeriodPicker extends ConsumerWidget {
                 notifier.state = StatsPeriod.year(period.year ?? now.year);
               case StatsPeriodKind.month:
                 notifier.state = StatsPeriod.month(
-                    period.year ?? now.year, period.month ?? now.month);
+                  period.year ?? now.year,
+                  period.month ?? now.month,
+                );
             }
           },
         ),
@@ -255,7 +285,9 @@ class _PeriodPicker extends ConsumerWidget {
                   child: DropdownButtonFormField<int>(
                     initialValue: period.year,
                     decoration: const InputDecoration(
-                        labelText: 'Year', border: OutlineInputBorder()),
+                      labelText: 'Year',
+                      border: OutlineInputBorder(),
+                    ),
                     items: [
                       for (final y in years)
                         DropdownMenuItem(value: y, child: Text('$y')),
@@ -274,19 +306,24 @@ class _PeriodPicker extends ConsumerWidget {
                     child: DropdownButtonFormField<int>(
                       initialValue: period.month,
                       decoration: const InputDecoration(
-                          labelText: 'Month', border: OutlineInputBorder()),
+                        labelText: 'Month',
+                        border: OutlineInputBorder(),
+                      ),
                       items: [
                         for (var m = 1; m <= 12; m++)
                           DropdownMenuItem(
                             value: m,
                             child: Text(
-                                DateFormat.MMM().format(DateTime(2000, m))),
+                              DateFormat.MMM().format(DateTime(2000, m)),
+                            ),
                           ),
                       ],
                       onChanged: (month) {
                         if (month == null) return;
-                        notifier.state =
-                            StatsPeriod.month(period.year ?? now.year, month);
+                        notifier.state = StatsPeriod.month(
+                          period.year ?? now.year,
+                          month,
+                        );
                       },
                     ),
                   ),

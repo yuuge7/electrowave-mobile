@@ -12,16 +12,20 @@ A local music player for Android, built with Flutter. Your files, on your phone 
 - **Equalizer** — 5-band EQ (±12 dB) with presets, plus ReplayGain volume normalization per track or per album.
 - **Playback speed** — 0.5× to 2×, persisted and re-applied to every track. Pitch-preserving: the chain runs mpv's `scaletempo2` time-stretcher with a music-tuned window instead of mpv's speech-oriented automatic correction.
 - **Appearance** — light / dark / follow-system, and optional Material You colors from your wallpaper.
-- **Home screen widget** — a compact 4×1 bar: album art, current track and previous / play-pause / next without unlocking. The card sizes itself to its content, so it doesn't paint empty background above and below the row.
+- **Home screen widget** — a compact 3×1 bar: album art, current track and previous / play-pause / next without unlocking. The card fills the cell the launcher hands out and its contents stretch with it, so it looks the same whatever row height your launcher uses.
 - **Playback** — powered by `media_kit`. Play/pause, seek, next/previous, shuffle, repeat (off / all / one). Mini player above the navigation bar expands to a full now-playing screen.
 - **Background playback** — keeps playing with the screen off, with a media notification, lock screen controls, audio focus handling, and headset/bluetooth button support.
 - **Queue system** — playing a track from any list sets that list as the playback context; a manual queue (*Play next* / *Add to queue*) always takes priority. Reorder or remove from the queue screen.
-- **Sleep timer** — 15/30/45/60 min presets, custom duration, or "end of current track". Countdown chip on the now-playing screen; cancel or extend (+15 min) anytime. Fades out before pausing.
+- **Sleep timer** — 15/30/45/60 min presets, custom duration, or "end of current track". Countdown chip on the now-playing screen; cancel or extend (+15 min) anytime. Fades out, then **closes the app outright** — playback service, notification and player all go, with position and queue saved for the next launch.
+- **Skip silence** — cuts silent stretches out as the audio plays (mpv `silenceremove`), so tracks finish before their tagged length.
+- **Fade on pause** — short volume ramp on pause and resume instead of cutting the waveform mid-cycle. On by default; both live in Settings → Playback.
 - **Stop when unattended** — playback stops after a chosen stretch with no interaction at all (Settings → Playback: off / 30 min / 1 / 2 / 4 / 8 h, default 2 h). Any touch in the app, notification, widget or headset button resets it; automatic track advances do not.
 - **Playlists** — create, rename, reorder; add tracks from any track's context menu.
-- **Play tracking** — a listen is logged once a track crosses 25% played, feeding play counts and last-played dates.
+- **Smart playlists** — saved rules instead of a fixed track list, re-evaluated every time you open them: play count, measured time listened, last played / date added windows, favourite, genre / artist / album / title text, year, duration. Match all or any rule, sort (including random), optional cap, and a live match count while you edit.
+- **Play tracking** — a listen is logged once a quarter of the track (at most 4 minutes) has *actually been heard*, feeding play counts and last-played dates. Scrubbing past the mark doesn't count, and a track looping under the same load books one play per further track-length of audio.
 - **Stats ("Wrapped")** — total listening time, top tracks, and top artists, filterable by month, year, or all time.
-- **Time listened** — a separate stats category ranking tracks by audio that *actually* played, measured from playback rather than inferred from play counts, so a skipped track only counts for the part you heard.
+- **Time listened** — a separate stats category ranking tracks by the time you *actually* spent listening, measured from playback rather than inferred from play counts: a skipped track only counts for the part you heard, and playback speed counts as real time (a 1:00 track is 0:40 at 1.5× and 1:20 at 0.75×). Play counts use the recording's own timeline instead, so a track counts as played whatever speed it ran at.
+- **Year in review** — a contributions-style calendar heatmap of the year's listening, plus hours, active days, longest streak, busiest day and the year's top track/artist. The summary card renders to a PNG you can share.
 - **Backup & restore** — export the SQLite database anywhere; imports are staged and applied safely on the next launch.
 
 ## Permissions

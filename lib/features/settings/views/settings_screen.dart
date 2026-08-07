@@ -73,7 +73,7 @@ class SettingsScreen extends ConsumerWidget {
           ListTile(
             leading: const Icon(Icons.bedtime_outlined),
             title: const Text('Sleep timer'),
-            subtitle: const Text('Pause playback after a delay'),
+            subtitle: const Text('Close the app after a delay'),
             onTap: () => showSleepTimerSheet(context),
           ),
           ListTile(
@@ -97,6 +97,23 @@ class SettingsScreen extends ConsumerWidget {
                 ? 'On · ${settings.replayGain == ReplayGainMode.off ? 'no normalization' : 'normalizing'}'
                 : 'Off'),
             onTap: () => context.push('/equalizer'),
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.content_cut),
+            title: const Text('Skip silence'),
+            subtitle: const Text(
+                'Cut silent stretches out — tracks end before their tagged length'),
+            value: settings.skipSilence,
+            onChanged:
+                ref.read(settingsControllerProvider.notifier).setSkipSilence,
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.blur_on),
+            title: const Text('Fade on pause'),
+            subtitle: const Text('Ramp the volume instead of cutting the audio'),
+            value: settings.fadeOnPause,
+            onChanged:
+                ref.read(settingsControllerProvider.notifier).setFadeOnPause,
           ),
           ListTile(
             leading: const Icon(Icons.speed),

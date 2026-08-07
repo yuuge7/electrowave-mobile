@@ -82,6 +82,12 @@ class SettingsController extends Notifier<AppSettings> {
   Future<void> setReplayGain(ReplayGainMode mode) =>
       _update(state.copyWith(replayGain: mode), audio: true);
 
+  Future<void> setSkipSilence(bool enabled) =>
+      _update(state.copyWith(skipSilence: enabled), audio: true);
+
+  Future<void> setFadeOnPause(bool enabled) =>
+      _update(state.copyWith(fadeOnPause: enabled), audio: true);
+
   /// 0 disables the no-interaction auto-stop.
   Future<void> setInactivityStopMinutes(int minutes) => _update(
         state.copyWith(inactivityStopMinutes: minutes < 0 ? 0 : minutes),

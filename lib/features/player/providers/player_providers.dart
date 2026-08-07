@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/legacy.dart';
 import '../../../core/database/database.dart';
 import '../../../core/database/database_provider.dart';
 import '../services/audio_handler.dart';
+import '../services/listening_meter.dart';
 import '../services/playback_persistence.dart';
 import '../services/widget_service.dart';
 import 'sleep_timer_provider.dart';
@@ -82,9 +83,7 @@ class PlayerQueueState {
         ? shuffleOrder
         : List<int>.generate(context.length, (i) => i);
     final pos = contextIndex < 0 ? -1 : order.indexOf(contextIndex);
-    return [
-      for (var i = pos + 1; i < order.length; i++) context[order[i]],
-    ];
+    return [for (var i = pos + 1; i < order.length; i++) context[order[i]]];
   }
 }
 
@@ -98,20 +97,16 @@ class PlayerController extends Notifier<PlayerQueueState> {
   final WidgetService _widgets = WidgetService();
   final Random _random = Random();
 
-  bool _scrobbled = false;
+  /// Plays already booked for the current load of the current track.
+  int _playsBooked = 0;
   StreamSubscription<Duration>? _positionSub;
 
   // Measured listening time. Derived from how far the position actually
   // advanced rather than from wall-clock time, so pauses cost nothing and the
   // figure means "this much audio was heard" at any playback speed.
   int? _listenSessionId;
-  int _listenedMs = 0;
+  final ListeningMeter _meter = ListeningMeter();
   int _savedListenedMs = 0;
-  Duration? _lastListenPosition;
-
-  /// Position ticks arrive a few times a second; anything bigger than this is
-  /// a seek or a track change, not listening.
-  static const _maxListenStep = Duration(seconds: 2);
 
   /// Writes are throttled: losing the tail of a session to a kill costs a few
   /// seconds of precision, and the row is topped up on every track change.
@@ -132,6 +127,10 @@ class PlayerController extends Notifier<PlayerQueueState> {
     // their own update from _loadAndPlay.
     final playingSub = _handler.player.stream.playing.listen((playing) {
       unawaited(_widgets.update(track: state.current, playing: playing));
+      // Pausing is the natural point to bank the running total: the app is
+      // most likely to be killed while nothing is playing, and the throttled
+      // flush would otherwise lose the last stretch.
+      if (!playing) unawaited(_flushListening());
     });
     ref.onDispose(playingSub.cancel);
 
@@ -263,7 +262,10 @@ class PlayerController extends Notifier<PlayerQueueState> {
       return;
     }
 
-    final prevIndex = _previousContextIndex(s, wrap: s.repeat == RepeatMode.all);
+    final prevIndex = _previousContextIndex(
+      s,
+      wrap: s.repeat == RepeatMode.all,
+    );
     if (prevIndex == null) {
       await _handler.seek(Duration.zero);
       return;
@@ -289,8 +291,8 @@ class PlayerController extends Notifier<PlayerQueueState> {
   }
 
   void cycleRepeat() {
-    final next = RepeatMode
-        .values[(state.repeat.index + 1) % RepeatMode.values.length];
+    final next =
+        RepeatMode.values[(state.repeat.index + 1) % RepeatMode.values.length];
     state = state.copyWith(repeat: next);
     unawaited(_saveState());
   }
@@ -339,17 +341,20 @@ class PlayerController extends Notifier<PlayerQueueState> {
     await _loadAndPlay(track);
   }
 
-  /// Called by the sleep timer when it fires.
-  Future<void> pauseFromSleepTimer() async {
+  /// Called by the sleep timer when it fires. The app is killed straight
+  /// after, so everything is awaited rather than left running: a fire-and-
+  /// forget write would not survive the exit.
+  Future<void> stopFromSleepTimer() async {
     await _handler.pause();
-    unawaited(_saveState());
+    await _flushListening();
+    await _saveState();
+    await _widgets.update(track: state.current, playing: false);
   }
 
   /// Drop a track everywhere it appears (after a library soft delete).
   void removeTrackFromQueues(int trackId) {
     final s = state;
-    final contextIdx =
-        s.context.indexWhere((t) => t.id == trackId);
+    final contextIdx = s.context.indexWhere((t) => t.id == trackId);
     var next = s.copyWith(
       manualQueue: s.manualQueue.where((t) => t.id != trackId).toList(),
     );
@@ -392,8 +397,10 @@ class PlayerController extends Notifier<PlayerQueueState> {
 
     var shuffleOrder = saved.shuffleOrder;
     if (saved.shuffle && shuffleOrder.length != contextTracks.length) {
-      shuffleOrder =
-          _makeShuffleOrder(contextTracks.length, max(0, contextIndex));
+      shuffleOrder = _makeShuffleOrder(
+        contextTracks.length,
+        max(0, contextIndex),
+      );
     }
 
     state = PlayerQueueState(
@@ -413,7 +420,7 @@ class PlayerController extends Notifier<PlayerQueueState> {
 
     if (!await trackFileExists(current)) return;
 
-    _scrobbled = false;
+    _playsBooked = 0;
     await _handler.loadTrack(current, autoPlay: false);
     final target = Duration(milliseconds: saved.positionMs);
     if (target > Duration.zero) {
@@ -434,14 +441,15 @@ class PlayerController extends Notifier<PlayerQueueState> {
       ref.read(playerMessageProvider.notifier).state =
           'File missing: ${track.title} — skipped';
       // Avoid infinite loops when everything is missing.
-      final anyLeft = state.manualQueue.isNotEmpty ||
+      final anyLeft =
+          state.manualQueue.isNotEmpty ||
           _nextContextIndex(state, wrap: false) != null;
       if (anyLeft) {
         await next();
       }
       return;
     }
-    _scrobbled = false;
+    _playsBooked = 0;
     // Closes the outgoing track's session while it is still `state.current`,
     // so its time is booked against the right track.
     await _resetListening();
@@ -492,14 +500,21 @@ class PlayerController extends Notifier<PlayerQueueState> {
 
   List<int> _makeShuffleOrder(int length, int firstIndex) {
     if (length <= 0) return const [];
-    final rest = [for (var i = 0; i < length; i++) if (i != firstIndex) i]
-      ..shuffle(_random);
+    final rest = [
+      for (var i = 0; i < length; i++)
+        if (i != firstIndex) i,
+    ]..shuffle(_random);
     return [firstIndex, ...rest];
   }
 
-  // Scrobbling: one PlaybackHistory row once playback crosses 25% of the
-  // track. Guard resets when position returns near zero (replay) or on a
-  // new track.
+  // Both stats come off the same measurement: what the [ListeningMeter] saw
+  // actually play. Sessions store the time spent listening, so a track at
+  // 0.75× is worth more of it than the same track at 1.5×; the play threshold
+  // uses the recording's own timeline, so a track counts as played whatever
+  // speed it ran at. A play is booked once a quarter of the track (capped at
+  // [scrobbleCap]) has gone past — deliberately *not* when the position marker
+  // crosses that mark, which a scrub or an mpv position re-emit after a
+  // filter-chain rebuild would also do.
   void _onPosition(Duration position) {
     final track = state.current;
     if (track == null) return;
@@ -509,16 +524,27 @@ class PlayerController extends Notifier<PlayerQueueState> {
         : _handler.player.state.duration;
     if (duration <= Duration.zero) return;
 
-    if (_scrobbled && position < const Duration(seconds: 2)) {
-      _scrobbled = false;
+    final added = _meter.add(
+      position: position,
+      at: DateTime.now(),
+      playing: _handler.playing,
+      rate: _handler.rate,
+    );
+    if (added > 0 &&
+        DateTime.now().difference(_lastListenFlush) >= _listenFlushInterval) {
+      unawaited(_flushListening());
     }
 
-    if (!_scrobbled && position >= duration * 0.25) {
-      _scrobbled = true;
+    // A track looping under the same load (seek back to the start, or a long
+    // mix played through twice) books another play every further track-length
+    // that goes past, so a replay still counts while a scrub cannot fake one.
+    final nextPlayAtMs =
+        scrobbleThresholdMs(duration) + _playsBooked * duration.inMilliseconds;
+    if (_meter.heardMs >= nextPlayAtMs) {
+      _playsBooked++;
       unawaited(_db.recordPlay(track.id));
     }
 
-    _accumulateListening(position);
     unawaited(_persistence.saveThrottled(_snapshot()));
   }
 
@@ -526,44 +552,27 @@ class PlayerController extends Notifier<PlayerQueueState> {
   // Measured listening time (Stats → "Time listened")
   // ---------------------------------------------------------------------
 
-  /// Adds the audio that played between two position ticks. Seeks, restarts
-  /// and track changes all show up as steps outside [_maxListenStep] and are
-  /// dropped rather than counted.
-  void _accumulateListening(Duration position) {
-    final previous = _lastListenPosition;
-    _lastListenPosition = position;
-    if (previous == null) return;
-
-    final step = position - previous;
-    if (step <= Duration.zero || step > _maxListenStep) return;
-
-    _listenedMs += step.inMilliseconds;
-    if (DateTime.now().difference(_lastListenFlush) >= _listenFlushInterval) {
-      unawaited(_flushListening());
-    }
-  }
-
   /// Persists the running total. Idempotent — it writes an absolute value, so
   /// calling it more often than needed only costs a write.
   Future<void> _flushListening() async {
     _lastListenFlush = DateTime.now();
     final track = state.current;
-    if (track == null || _listenedMs == _savedListenedMs) return;
+    final listenedMs = _meter.listenedMs;
+    if (track == null || listenedMs == _savedListenedMs) return;
     // Ignore stretches too short to be listening (a tap through a queue).
-    if (_listenedMs < 1000) return;
+    if (listenedMs < 1000) return;
 
     _listenSessionId ??= await _db.startListeningSession(track.id);
-    _savedListenedMs = _listenedMs;
-    await _db.saveListenedMs(_listenSessionId!, _listenedMs);
+    _savedListenedMs = listenedMs;
+    await _db.saveListenedMs(_listenSessionId!, listenedMs);
   }
 
   /// Closes the current session and starts counting again for the next track.
   Future<void> _resetListening() async {
     await _flushListening();
     _listenSessionId = null;
-    _listenedMs = 0;
     _savedListenedMs = 0;
-    _lastListenPosition = null;
+    _meter.reset();
   }
 
   PersistedPlayback _snapshot() {

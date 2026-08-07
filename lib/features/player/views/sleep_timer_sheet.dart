@@ -21,75 +21,83 @@ class _SleepTimerSheet extends ConsumerWidget {
     final timer = ref.watch(sleepTimerProvider);
     final notifier = ref.read(sleepTimerProvider.notifier);
 
+    // Scrollable: the preset list plus the extend row is taller than the
+    // default sheet height on shorter screens, which overflowed instead.
     return SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListTile(
-            title: Text('Sleep timer',
-                style: Theme.of(context).textTheme.titleMedium),
-            subtitle: timer == null
-                ? const Text('Off')
-                : Text(timer.endOfTrack
-                    ? 'Stops at the end of the current track'
-                    : 'Stops in ${formatDuration(timer.remaining)}'),
-            trailing: timer != null
-                ? TextButton(
-                    onPressed: () {
-                      notifier.cancel();
-                      Navigator.pop(context);
-                    },
-                    child: const Text('Cancel timer'),
-                  )
-                : null,
-          ),
-          const Divider(height: 1),
-          for (final minutes in const [15, 30, 45, 60])
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
             ListTile(
-              leading: const Icon(Icons.timer_outlined),
-              title: Text('$minutes minutes'),
+              title: Text(
+                'Sleep timer',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              subtitle: timer == null
+                  ? const Text('Off — when set, it closes the app')
+                  : Text(
+                      timer.endOfTrack
+                          ? 'Closes the app at the end of the current track'
+                          : 'Closes the app in ${formatDuration(timer.remaining)}',
+                    ),
+              trailing: timer != null
+                  ? TextButton(
+                      onPressed: () {
+                        notifier.cancel();
+                        Navigator.pop(context);
+                      },
+                      child: const Text('Cancel timer'),
+                    )
+                  : null,
+            ),
+            const Divider(height: 1),
+            for (final minutes in const [15, 30, 45, 60])
+              ListTile(
+                leading: const Icon(Icons.timer_outlined),
+                title: Text('$minutes minutes'),
+                onTap: () {
+                  notifier.startDuration(Duration(minutes: minutes));
+                  Navigator.pop(context);
+                },
+              ),
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: const Text('Custom duration'),
+              onTap: () async {
+                final navigator = Navigator.of(context);
+                final input = await promptForText(
+                  context,
+                  title: 'Sleep timer (minutes)',
+                  hint: 'e.g. 20',
+                  keyboardType: TextInputType.number,
+                );
+                final minutes = int.tryParse(input ?? '');
+                if (minutes != null && minutes > 0) {
+                  notifier.startDuration(Duration(minutes: minutes));
+                }
+                navigator.pop();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.music_note_outlined),
+              title: const Text('End of current track'),
               onTap: () {
-                notifier.startDuration(Duration(minutes: minutes));
+                notifier.startEndOfTrack();
                 Navigator.pop(context);
               },
             ),
-          ListTile(
-            leading: const Icon(Icons.edit_outlined),
-            title: const Text('Custom duration'),
-            onTap: () async {
-              final navigator = Navigator.of(context);
-              final input = await promptForText(
-                context,
-                title: 'Sleep timer (minutes)',
-                hint: 'e.g. 20',
-                keyboardType: TextInputType.number,
-              );
-              final minutes = int.tryParse(input ?? '');
-              if (minutes != null && minutes > 0) {
-                notifier.startDuration(Duration(minutes: minutes));
-              }
-              navigator.pop();
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.music_note_outlined),
-            title: const Text('End of current track'),
-            onTap: () {
-              notifier.startEndOfTrack();
-              Navigator.pop(context);
-            },
-          ),
-          if (timer != null)
-            ListTile(
-              leading: const Icon(Icons.add),
-              title: const Text('Extend +15 minutes'),
-              onTap: () {
-                notifier.extend15();
-                Navigator.pop(context);
-              },
-            ),
-          const SizedBox(height: 8),
-        ],
+            if (timer != null)
+              ListTile(
+                leading: const Icon(Icons.add),
+                title: const Text('Extend +15 minutes'),
+                onTap: () {
+                  notifier.extend15();
+                  Navigator.pop(context);
+                },
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     );
   }

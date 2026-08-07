@@ -27,6 +27,8 @@ class AppSettings {
     this.eqEnabled = false,
     this.eqGainsDb = const [0, 0, 0, 0, 0],
     this.replayGain = ReplayGainMode.off,
+    this.skipSilence = false,
+    this.fadeOnPause = true,
     this.inactivityStopMinutes = 120,
   });
 
@@ -40,6 +42,14 @@ class AppSettings {
   /// Gain per band in dB, parallel to [kEqBandFrequencies].
   final List<double> eqGainsDb;
   final ReplayGainMode replayGain;
+
+  /// Cut silent stretches out of the audio as it plays (mpv `silenceremove`).
+  /// Tracks then finish earlier than their tagged duration.
+  final bool skipSilence;
+
+  /// Ramp the volume down before pausing and back up on resume, instead of
+  /// cutting the waveform mid-cycle.
+  final bool fadeOnPause;
 
   /// Stop playback after this many minutes without any user interaction —
   /// a tap in the app, a notification/widget/headset control, or a media
@@ -59,6 +69,8 @@ class AppSettings {
     bool? eqEnabled,
     List<double>? eqGainsDb,
     ReplayGainMode? replayGain,
+    bool? skipSilence,
+    bool? fadeOnPause,
     int? inactivityStopMinutes,
   }) {
     return AppSettings(
@@ -68,6 +80,8 @@ class AppSettings {
       eqEnabled: eqEnabled ?? this.eqEnabled,
       eqGainsDb: eqGainsDb ?? this.eqGainsDb,
       replayGain: replayGain ?? this.replayGain,
+      skipSilence: skipSilence ?? this.skipSilence,
+      fadeOnPause: fadeOnPause ?? this.fadeOnPause,
       inactivityStopMinutes:
           inactivityStopMinutes ?? this.inactivityStopMinutes,
     );
@@ -80,6 +94,8 @@ class AppSettings {
         'eqEnabled': eqEnabled,
         'eqGainsDb': eqGainsDb,
         'replayGain': replayGain.name,
+        'skipSilence': skipSilence,
+        'fadeOnPause': fadeOnPause,
         'inactivityStopMinutes': inactivityStopMinutes,
       };
 
@@ -114,6 +130,8 @@ class AppSettings {
         (mode) => mode.name == json['replayGain'],
         orElse: () => ReplayGainMode.off,
       ),
+      skipSilence: json['skipSilence'] as bool? ?? false,
+      fadeOnPause: json['fadeOnPause'] as bool? ?? true,
       inactivityStopMinutes: switch (json['inactivityStopMinutes']) {
         final num minutes when minutes >= 0 => minutes.toInt(),
         _ => 120,

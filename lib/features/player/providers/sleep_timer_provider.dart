@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../shared/utils/app_exit.dart';
 import 'player_providers.dart';
 
 class SleepTimerState {
@@ -31,7 +32,8 @@ class SleepTimerState {
 
 final sleepTimerProvider =
     NotifierProvider<SleepTimerNotifier, SleepTimerState?>(
-        SleepTimerNotifier.new);
+      SleepTimerNotifier.new,
+    );
 
 class SleepTimerNotifier extends Notifier<SleepTimerState?> {
   Timer? _ticker;
@@ -101,16 +103,25 @@ class SleepTimerNotifier extends Notifier<SleepTimerState?> {
     state = null;
   }
 
-  /// Pause playback and clear the timer (used at expiry, and by the player
+  /// Stop playback and close the app (used at expiry, and by the player
   /// controller when an end-of-track timer sees the track complete).
+  ///
+  /// Leaving the app running would keep the playback service, its
+  /// notification and mpv alive for the rest of the night, so the timer ends
+  /// the process outright — playback state is flushed to disk first and
+  /// restored on the next launch.
   Future<void> fireNow() async {
     if (_fired) return;
     _fired = true;
     _ticker?.cancel();
-    await ref.read(playerControllerProvider.notifier).pauseFromSleepTimer();
+    await ref.read(playerControllerProvider.notifier).stopFromSleepTimer();
     _clearFade();
     _teardown();
     state = null;
+    // Tears down the media notification before the process goes; a killed
+    // foreground service can otherwise leave its notification behind.
+    await ref.read(audioHandlerProvider).stop();
+    await closeApp();
   }
 
   void _tick() {
@@ -129,10 +140,11 @@ class SleepTimerNotifier extends Notifier<SleepTimerState?> {
 
   void _applyFade(Duration left) {
     _fading = true;
-    final fraction =
-        (left.inMilliseconds / _fadeWindow.inMilliseconds).clamp(0.0, 1.0);
-    unawaited(
-        ref.read(audioHandlerProvider).setVolume(_baseVolume * fraction));
+    final fraction = (left.inMilliseconds / _fadeWindow.inMilliseconds).clamp(
+      0.0,
+      1.0,
+    );
+    unawaited(ref.read(audioHandlerProvider).setVolume(_baseVolume * fraction));
   }
 
   void _clearFade() {

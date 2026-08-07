@@ -14,10 +14,13 @@ import 'features/player/views/now_playing_screen.dart';
 import 'features/player/views/queue_screen.dart';
 import 'features/playlists/views/playlist_detail_screen.dart';
 import 'features/playlists/views/playlists_screen.dart';
+import 'features/playlists/views/smart_playlist_detail_screen.dart';
+import 'features/playlists/views/smart_playlist_editor_screen.dart';
 import 'features/settings/providers/settings_providers.dart';
 import 'features/settings/services/settings_persistence.dart';
 import 'features/settings/views/settings_screen.dart';
 import 'features/stats/views/stats_screen.dart';
+import 'features/stats/views/year_review_screen.dart';
 import 'shared/widgets/app_shell.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -41,6 +44,27 @@ final GoRouter appRouter = GoRouter(
             path: '/playlists',
             builder: (context, state) => const PlaylistsScreen(),
             routes: [
+              // Ahead of ':id', which would otherwise swallow "smart".
+              GoRoute(
+                path: 'smart/new',
+                builder: (context, state) => const SmartPlaylistEditorScreen(),
+              ),
+              GoRoute(
+                path: 'smart/:id',
+                builder: (context, state) => SmartPlaylistDetailScreen(
+                  smartPlaylistId:
+                      int.tryParse(state.pathParameters['id'] ?? '') ?? -1,
+                ),
+                routes: [
+                  GoRoute(
+                    path: 'edit',
+                    builder: (context, state) => SmartPlaylistEditorScreen(
+                      smartPlaylistId:
+                          int.tryParse(state.pathParameters['id'] ?? '') ?? -1,
+                    ),
+                  ),
+                ],
+              ),
               GoRoute(
                 path: ':id',
                 builder: (context, state) => PlaylistDetailScreen(
@@ -55,6 +79,15 @@ final GoRouter appRouter = GoRouter(
           GoRoute(
             path: '/stats',
             builder: (context, state) => const StatsScreen(),
+            routes: [
+              GoRoute(
+                path: 'year/:year',
+                builder: (context, state) => YearReviewScreen(
+                  year: int.tryParse(state.pathParameters['year'] ?? '') ??
+                      DateTime.now().year,
+                ),
+              ),
+            ],
           ),
         ]),
         StatefulShellBranch(routes: [

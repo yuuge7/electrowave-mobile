@@ -34,6 +34,36 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
   double _volumeBeforeDuck = 100;
   bool _ducked = false;
 
+  // ---------------------------------------------------------------------------
+  // Volume, and the short ramps around play/pause
+  // ---------------------------------------------------------------------------
+
+  /// The volume playback is *meant* to run at. Tracked separately from
+  /// `_player.state.volume` because that reads whatever a fade or a duck left
+  /// behind mid-ramp, and everything here needs the level to return to.
+  double _userVolume = 100;
+
+  /// Bumped by every ramp; a ramp that finds its token stale abandons its
+  /// remaining steps, so a pause landing on top of a fade-in doesn't fight it.
+  int _fadeToken = 0;
+
+  static const _fadeSteps = 12;
+  static const _fadeStep = Duration(milliseconds: 25);
+
+  /// Applied from the settings controller.
+  bool _fadeOnPause = true;
+  set fadeOnPause(bool enabled) => _fadeOnPause = enabled;
+
+  Future<void> _ramp({required double from, required double to}) async {
+    final token = ++_fadeToken;
+    for (var step = 1; step <= _fadeSteps; step++) {
+      if (token != _fadeToken) return;
+      final value = from + (to - from) * (step / _fadeSteps);
+      await _player.setVolume(value.clamp(0, 100));
+      if (step < _fadeSteps) await Future<void>.delayed(_fadeStep);
+    }
+  }
+
   /// With androidStopForegroundOnPause: false the service keeps its wake
   /// lock while paused; stop it after a long pause so a forgotten paused
   /// player doesn't hold the CPU awake overnight. Playback state is
@@ -104,7 +134,7 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
       if (event.begin) {
         switch (event.type) {
           case AudioInterruptionType.duck:
-            _volumeBeforeDuck = _player.state.volume;
+            _volumeBeforeDuck = _userVolume;
             _ducked = true;
             await _player.setVolume(_volumeBeforeDuck * 0.3);
           case AudioInterruptionType.pause:
@@ -170,40 +200,44 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
 
   void _broadcast({bool? playing}) {
     final isPlaying = playing ?? _player.state.playing;
-    playbackState.add(playbackState.value.copyWith(
-      controls: [
-        MediaControl.skipToPrevious,
-        if (isPlaying) MediaControl.pause else MediaControl.play,
-        MediaControl.skipToNext,
-        _closeControl,
-      ],
-      systemActions: const {
-        MediaAction.seek,
-        MediaAction.seekForward,
-        MediaAction.seekBackward,
-      },
-      androidCompactActionIndices: const [0, 1, 2],
-      processingState: _player.state.buffering
-          ? AudioProcessingState.buffering
-          : AudioProcessingState.ready,
-      playing: isPlaying,
-      updatePosition: _player.state.position,
-      speed: _player.state.rate,
-    ));
+    playbackState.add(
+      playbackState.value.copyWith(
+        controls: [
+          MediaControl.skipToPrevious,
+          if (isPlaying) MediaControl.pause else MediaControl.play,
+          MediaControl.skipToNext,
+          _closeControl,
+        ],
+        systemActions: const {
+          MediaAction.seek,
+          MediaAction.seekForward,
+          MediaAction.seekBackward,
+        },
+        androidCompactActionIndices: const [0, 1, 2],
+        processingState: _player.state.buffering
+            ? AudioProcessingState.buffering
+            : AudioProcessingState.ready,
+        playing: isPlaying,
+        updatePosition: _player.state.position,
+        speed: _player.state.rate,
+      ),
+    );
   }
 
   /// Load [track] into the player and publish it to the media notification.
   Future<void> loadTrack(Track track, {bool autoPlay = true}) async {
-    mediaItem.add(MediaItem(
-      id: track.filePath,
-      title: track.title,
-      artist: track.artist,
-      album: track.album,
-      duration: Duration(milliseconds: track.durationMs),
-      artUri: track.albumArtPath != null && track.albumArtPath!.isNotEmpty
-          ? Uri.file(track.albumArtPath!)
-          : null,
-    ));
+    mediaItem.add(
+      MediaItem(
+        id: track.filePath,
+        title: track.title,
+        artist: track.artist,
+        album: track.album,
+        duration: Duration(milliseconds: track.durationMs),
+        artUri: track.albumArtPath != null && track.albumArtPath!.isNotEmpty
+            ? Uri.file(track.albumArtPath!)
+            : null,
+      ),
+    );
     await _player.open(Media(track.filePath), play: false);
     if (_desiredRate != 1.0) await _player.setRate(_desiredRate);
     if (autoPlay) await _resumePlayback();
@@ -215,9 +249,18 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
 
   /// Start audio without treating it as user activity — auto-advance to the
   /// next track and resume-after-interruption both land here.
+  ///
+  /// Playback starts silent and ramps up: mpv resumes mid-waveform, which
+  /// clicks on anything with low-frequency content.
   Future<void> _resumePlayback() async {
     await activateSession();
-    await _player.play();
+    if (_fadeOnPause) {
+      await _player.setVolume(0);
+      await _player.play();
+      await _ramp(from: 0, to: _userVolume);
+    } else {
+      await _player.play();
+    }
   }
 
   @override
@@ -227,9 +270,17 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   @override
-  Future<void> pause() {
+  Future<void> pause() async {
     noteUserActivity();
-    return _player.pause();
+    if (!_fadeOnPause) {
+      await _player.pause();
+      return;
+    }
+    await _ramp(from: _player.state.volume, to: 0);
+    await _player.pause();
+    // Back to the real level while silent, so anything reading the volume
+    // (or a resume that skips the ramp) sees the level the user chose.
+    await _player.setVolume(_userVolume);
   }
 
   @override
@@ -247,10 +298,12 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
     _inactivityTimer?.cancel();
     _inactivityTimer = null;
     await _player.pause();
-    playbackState.add(playbackState.value.copyWith(
-      processingState: AudioProcessingState.idle,
-      playing: false,
-    ));
+    playbackState.add(
+      playbackState.value.copyWith(
+        processingState: AudioProcessingState.idle,
+        playing: false,
+      ),
+    );
     await super.stop();
   }
 
@@ -266,9 +319,16 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
     await onSkipToPrevious?.call();
   }
 
-  Future<void> setVolume(double volume) => _player.setVolume(volume);
+  Future<void> setVolume(double volume) {
+    _userVolume = volume;
+    // Cancels a ramp in flight, which would otherwise overwrite this.
+    _fadeToken++;
+    return _player.setVolume(volume);
+  }
 
-  double get volume => _player.state.volume;
+  /// The level playback returns to, not necessarily what mpv is playing at
+  /// this instant — see [_userVolume].
+  double get volume => _userVolume;
 
   /// Playback speed. The filter chain is rebuilt *before* the speed changes
   /// so the time-stretcher is already in place — otherwise the first frames
@@ -380,7 +440,9 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
 
     if (settings != null && settings.eqEnabled) {
       for (var i = 0; i < kEqBandFrequencies.length; i++) {
-        final gain = i < settings.eqGainsDb.length ? settings.eqGainsDb[i] : 0.0;
+        final gain = i < settings.eqGainsDb.length
+            ? settings.eqGainsDb[i]
+            : 0.0;
         // Skip inaudible bands to keep the chain short.
         if (gain.abs() < 0.1) continue;
         filters.add(
@@ -388,6 +450,21 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
           ':g=${gain.toStringAsFixed(1)}',
         );
       }
+    }
+
+    // Skip silence. libavfilter's silenceremove, reached through the same
+    // lavfi bridge as the EQ, so it has to stay ahead of the stretcher.
+    // stop_periods=-1 trims silence anywhere in the file rather than only the
+    // lead-in; the threshold is well below any music but above tape/vinyl
+    // noise floors. Audio the filter drops never reaches the output, so the
+    // track simply finishes early — position and duration stop agreeing, which
+    // is inherent to the feature rather than a bug to fix.
+    if (settings != null && settings.skipSilence) {
+      filters.add(
+        'silenceremove=start_periods=1:start_threshold=-50dB:start_duration=0'
+        ':stop_periods=-1:stop_threshold=-50dB:stop_duration=0.5'
+        ':detection=peak',
+      );
     }
 
     if (_desiredRate != 1.0 && _stretchFilter != null) {
@@ -401,9 +478,10 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
     }
   }
 
-  /// Apply EQ + ReplayGain from [settings].
+  /// Apply EQ, skip-silence, fades and ReplayGain from [settings].
   Future<void> applyAudioSettings(AppSettings settings) async {
     _audioSettings = settings;
+    _fadeOnPause = settings.fadeOnPause;
     final native = _native;
     if (native == null) return;
 
