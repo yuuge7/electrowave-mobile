@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'core/theme/theme.dart';
 import 'features/library/providers/browse_providers.dart';
 import 'features/player/providers/player_providers.dart';
 import 'features/library/views/browse_views.dart';
@@ -156,16 +157,8 @@ final GoRouter appRouter = GoRouter(
   ],
 );
 
-const Color kBrandSeed = Color(0xFF00E5CC);
-
 class ElectrowaveApp extends ConsumerWidget {
   const ElectrowaveApp({super.key});
-
-  ThemeData _theme(ColorScheme scheme) => ThemeData(
-        useMaterial3: true,
-        colorScheme: scheme,
-        scaffoldBackgroundColor: scheme.surface,
-      );
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -186,16 +179,16 @@ class ElectrowaveApp extends ConsumerWidget {
     // null everywhere else — fall back to the brand seed in that case.
     return DynamicColorBuilder(
       builder: (lightDynamic, darkDynamic) {
+        // Material You replaces the hues when the user asks for it; the
+        // crafted palette is the default, because ColorScheme.fromSeed is
+        // exactly what makes one M3 app look like every other M3 app.
         final useDynamic = settings.dynamicColor;
         final lightScheme = useDynamic && lightDynamic != null
             ? lightDynamic.harmonized()
-            : ColorScheme.fromSeed(seedColor: kBrandSeed);
+            : ElectrowaveTheme.lightScheme;
         final darkScheme = useDynamic && darkDynamic != null
             ? darkDynamic.harmonized()
-            : ColorScheme.fromSeed(
-                seedColor: kBrandSeed,
-                brightness: Brightness.dark,
-              );
+            : ElectrowaveTheme.darkScheme;
 
         return MaterialApp.router(
           title: 'Electrowave',
@@ -205,8 +198,8 @@ class ElectrowaveApp extends ConsumerWidget {
             AppThemeMode.light => ThemeMode.light,
             AppThemeMode.dark => ThemeMode.dark,
           },
-          theme: _theme(lightScheme),
-          darkTheme: _theme(darkScheme),
+          theme: ElectrowaveTheme.build(lightScheme),
+          darkTheme: ElectrowaveTheme.build(darkScheme),
           routerConfig: appRouter,
         );
       },

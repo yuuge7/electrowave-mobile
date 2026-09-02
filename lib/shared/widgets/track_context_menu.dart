@@ -30,7 +30,10 @@ class _TrackMenuSheet extends ConsumerWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           ListTile(
-            leading: ArtThumb(artPath: track.albumArtPath),
+            leading: ArtThumb(
+              artPath: track.albumArtPath,
+              seed: track.album.isNotEmpty ? track.album : track.title,
+            ),
             title: Text(track.title,
                 maxLines: 1, overflow: TextOverflow.ellipsis),
             subtitle: Text(track.artist,

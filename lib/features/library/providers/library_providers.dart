@@ -19,7 +19,42 @@ final libraryScannerProvider = Provider<LibraryScanner>(
 final tagWriterProvider =
     Provider<TagWriter>((ref) => TagWriter(ref.watch(databaseProvider)));
 
-final librarySearchProvider = StateProvider<String>((ref) => '');
+/// Raw text in the search field, written on every keystroke. The field itself
+/// watches this, so it is the only place the query string lives — there is no
+/// separate `TextEditingController` state to keep in sync.
+final librarySearchInputProvider = StateProvider<String>((ref) => '');
+
+/// Debounced view of [librarySearchInputProvider]: the string actually handed
+/// to the database.
+///
+/// The library query is `title LIKE '%x%' OR artist LIKE '%x%' OR album LIKE
+/// '%x%'`. A leading wildcard cannot use an index, so every one of those is a
+/// full table scan — running one per keystroke means typing an eight-letter
+/// artist name scans the whole library eight times.
+final librarySearchProvider =
+    NotifierProvider<LibrarySearchQuery, String>(LibrarySearchQuery.new);
+
+class LibrarySearchQuery extends Notifier<String> {
+  static const _debounce = Duration(milliseconds: 250);
+
+  Timer? _timer;
+
+  @override
+  String build() {
+    ref.listen(librarySearchInputProvider, (_, input) {
+      _timer?.cancel();
+      // Clearing the field restores the full list and costs nothing, so it
+      // should feel instant; only typing waits for the pause.
+      if (input.isEmpty) {
+        state = '';
+        return;
+      }
+      _timer = Timer(_debounce, () => state = input);
+    });
+    ref.onDispose(() => _timer?.cancel());
+    return ref.read(librarySearchInputProvider);
+  }
+}
 
 final librarySortProvider =
     StateProvider<LibrarySort>((ref) => LibrarySort.title);

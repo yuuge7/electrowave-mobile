@@ -6,6 +6,7 @@ import 'package:home_widget/home_widget.dart';
 import '../../../core/database/database_provider.dart';
 import '../../library/providers/browse_providers.dart';
 import '../../library/providers/library_providers.dart';
+import '../../../shared/widgets/deck.dart';
 import '../../player/views/sleep_timer_sheet.dart';
 import '../providers/settings_providers.dart';
 import '../services/notification_diagnostics.dart';
@@ -531,21 +532,14 @@ class _BatteryExemptionTileState extends ConsumerState<_BatteryExemptionTile> {
   }
 }
 
+/// Region names are engraved panel labels. They used to be accent-coloured,
+/// which spent the signal colour on a heading — the accent means "this is
+/// live", and a section title is never that.
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader(this.text);
 
   final String text;
 
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-      child: Text(
-        text,
-        style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              color: Theme.of(context).colorScheme.primary,
-            ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => SectionHeader(text);
 }

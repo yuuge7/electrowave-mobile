@@ -1,6 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Media access: READ_MEDIA_AUDIO on Android 13+, legacy READ_EXTERNAL_STORAGE below -->
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
+    <!-- Sidecar cover art (cover.jpg / folder.jpg next to the audio) is an
+         image, and READ_MEDIA_AUDIO does not grant images. Without this the
+         scanner's directory listing does not even see those files on
+         Android 13+, so every such album falls back to a placeholder.
+         Optional: denying it only costs folder art, never playback. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32"/>
     <!-- Background playback -->

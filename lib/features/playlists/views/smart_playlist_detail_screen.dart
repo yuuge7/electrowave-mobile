@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/database/database_provider.dart';
 import '../../../shared/widgets/art_thumb.dart';
+import '../../../shared/widgets/state_views.dart';
 import '../../../shared/widgets/track_context_menu.dart';
 import '../../player/providers/player_providers.dart';
 import '../providers/playlist_providers.dart';
@@ -90,9 +91,8 @@ class SmartPlaylistDetailScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: tracksAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(child: Text('Error: $error')),
+      body: AsyncView(
+        value: tracksAsync,
         data: (tracks) {
           if (tracks.isEmpty) {
             return Center(
@@ -134,7 +134,10 @@ class SmartPlaylistDetailScreen extends ConsumerWidget {
                     return ListTile(
                       onTap: () => controller.playFromList(track, tracks, name),
                       onLongPress: () => showTrackContextMenu(context, track),
-                      leading: ArtThumb(artPath: track.albumArtPath),
+                      leading: ArtThumb(
+                        artPath: track.albumArtPath,
+                        seed: track.album.isNotEmpty ? track.album : track.title,
+                      ),
                       title: Text(
                         track.title,
                         maxLines: 1,

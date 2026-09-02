@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/database/database.dart';
 import '../../../core/database/database_provider.dart';
 import '../../../shared/widgets/art_thumb.dart';
+import '../../../shared/widgets/state_views.dart';
 import '../../../shared/widgets/track_context_menu.dart';
 import '../../player/providers/player_providers.dart';
 import '../providers/playlist_providers.dart';
@@ -38,16 +40,15 @@ class PlaylistDetailScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: tracksAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(child: Text('Error: $error')),
+      body: AsyncView<List<Track>>(
+        value: tracksAsync,
         data: (tracks) {
           if (tracks.isEmpty) {
-            return const Center(
-              child: Text(
-                'Empty playlist.\nAdd tracks from the library:\nlong-press a track → Add to playlist.',
-                textAlign: TextAlign.center,
-              ),
+            return const EmptyStateView(
+              icon: Icons.playlist_add,
+              title: 'Empty playlist',
+              message: 'Add tracks from anywhere in the library: long-press a '
+                  'track, then Add to playlist.',
             );
           }
           return ReorderableListView.builder(
@@ -68,7 +69,10 @@ class PlaylistDetailScreen extends ConsumerWidget {
                   playlist?.name ?? 'Playlist',
                 ),
                 onLongPress: () => showTrackContextMenu(context, track),
-                leading: ArtThumb(artPath: track.albumArtPath),
+                leading: ArtThumb(
+                  artPath: track.albumArtPath,
+                  seed: track.album.isNotEmpty ? track.album : track.title,
+                ),
                 title: Text(track.title,
                     maxLines: 1, overflow: TextOverflow.ellipsis),
                 subtitle: Text(track.artist,

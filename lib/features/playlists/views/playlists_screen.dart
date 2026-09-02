@@ -4,6 +4,10 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/database/database_provider.dart';
 import '../../../shared/widgets/track_context_menu.dart' show promptForText;
+import '../../../core/theme/tokens.dart';
+import '../../../shared/widgets/art_thumb.dart';
+import '../../../shared/widgets/deck.dart';
+import '../../../shared/widgets/state_views.dart';
 import '../models/smart_playlist.dart';
 import '../providers/playlist_providers.dart';
 
@@ -82,30 +86,81 @@ class PlaylistsScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Playlists')),
-      floatingActionButton: FloatingActionButton(
-        tooltip: 'New playlist',
-        onPressed: () => _createPlaylist(context, ref),
-        child: const Icon(Icons.add),
+      floatingActionButton: Builder(
+        builder: (context) {
+          final signal = context.deck.signal;
+          return FloatingActionButton(
+            tooltip: 'New playlist',
+            backgroundColor: Color.alphaBlend(
+              signal.withValues(alpha: 0.16),
+              Theme.of(context).colorScheme.surface,
+            ),
+            foregroundColor: signal,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: signal.withValues(alpha: 0.55), width: 1.5),
+            ),
+            onPressed: () => _createPlaylist(context, ref),
+            child: const Icon(Icons.add),
+          );
+        },
       ),
-      body: playlistsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(child: Text('Error: $error')),
+      body: AsyncView(
+        value: playlistsAsync,
         data: (playlists) {
           if (playlists.isEmpty && smartPlaylists.isEmpty) {
-            return const Center(
-              child: Text('No playlists yet — tap + to create one'),
+            return EmptyStateView(
+              icon: Icons.queue_music_outlined,
+              title: 'No playlists yet',
+              message: 'Build one by hand, or write rules and let the library '
+                  'keep it filled in for you.',
+              action: FilledButton.icon(
+                onPressed: () => _createPlaylist(context, ref),
+                icon: const Icon(Icons.add),
+                label: const Text('New playlist'),
+              ),
             );
           }
+          // Two kinds of list live here and they behave differently: one you
+          // fill by hand, one the library keeps filled. Concatenating them
+          // into a single run with index arithmetic hid that entirely.
+          const manualHeader = 1;
+          final smartHeader = smartPlaylists.isEmpty ? 0 : 1;
+          final manualCount = playlists.length;
+
           return ListView.builder(
-            itemCount: playlists.length + smartPlaylists.length,
-            itemBuilder: (context, index) {
+            itemCount: manualHeader +
+                manualCount +
+                smartHeader +
+                smartPlaylists.length,
+            itemBuilder: (context, rawIndex) {
+              if (rawIndex == 0) {
+                return SectionHeader(
+                  'Playlists',
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+                  trailing: PanelLabel('$manualCount'),
+                );
+              }
+              if (rawIndex == manualHeader + manualCount &&
+                  smartPlaylists.isNotEmpty) {
+                return SectionHeader(
+                  'Smart lists · kept live',
+                  trailing: PanelLabel('${smartPlaylists.length}'),
+                );
+              }
+              final index = rawIndex > manualHeader + manualCount
+                  ? rawIndex - manualHeader - smartHeader
+                  : rawIndex - manualHeader;
               if (index >= playlists.length) {
                 final smart = smartPlaylists[index - playlists.length];
                 final definition = SmartPlaylistDefinition.decode(
                   smart.rulesJson,
                 );
                 return ListTile(
-                  leading: const CircleAvatar(child: Icon(Icons.auto_awesome)),
+                  leading: GeneratedTile(
+                    seed: smart.name,
+                    icon: Icons.auto_awesome,
+                  ),
                   title: Text(
                     smart.name,
                     maxLines: 1,
@@ -140,13 +195,7 @@ class PlaylistsScreen extends ConsumerWidget {
               }
               final entry = playlists[index];
               return ListTile(
-                leading: CircleAvatar(
-                  child: Text(
-                    entry.playlist.name.isNotEmpty
-                        ? entry.playlist.name[0].toUpperCase()
-                        : '?',
-                  ),
-                ),
+                leading: GeneratedTile(seed: entry.playlist.name),
                 title: Text(
                   entry.playlist.name,
                   maxLines: 1,

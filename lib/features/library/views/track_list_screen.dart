@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/database.dart';
 import '../../../shared/utils/format.dart';
 import '../../../shared/widgets/art_thumb.dart';
+import '../../../shared/widgets/state_views.dart';
 import '../../../shared/widgets/track_tile.dart';
 import '../../player/providers/player_providers.dart';
 import '../../settings/providers/settings_providers.dart';
@@ -35,12 +36,15 @@ class TrackListScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(title: Text(title)),
-      body: tracks.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(child: Text('Error: $error')),
+      body: AsyncView(
+        value: tracks,
         data: (list) {
           if (list.isEmpty) {
-            return const Center(child: Text('No tracks here'));
+            return const EmptyStateView(
+              icon: Icons.music_off_outlined,
+              title: 'No tracks here',
+              message: 'Nothing in your library belongs to this yet.',
+            );
           }
 
           final totalMs =
@@ -126,7 +130,12 @@ class _Header extends StatelessWidget {
                   size: 48, color: theme.colorScheme.onSurfaceVariant),
             )
           else
-            ArtThumb(artPath: artPath, size: 96, borderRadius: 12),
+            ArtThumb(
+              artPath: artPath,
+              size: 96,
+              borderRadius: 12,
+              seed: title,
+            ),
           const SizedBox(width: 16),
           Expanded(
             child: Column(

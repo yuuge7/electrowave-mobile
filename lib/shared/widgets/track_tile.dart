@@ -45,7 +45,10 @@ class TrackTile extends ConsumerWidget {
                 SnackBar(content: Text('File missing: ${track.filePath}')))
           : onTap,
       onLongPress: () => showTrackContextMenu(context, track),
-      leading: ArtThumb(artPath: track.albumArtPath),
+      leading: ArtThumb(
+        artPath: track.albumArtPath,
+        seed: track.album.isNotEmpty ? track.album : track.title,
+      ),
       title: Text(
         track.title,
         maxLines: 1,
@@ -78,6 +81,7 @@ class TrackTile extends ConsumerWidget {
           ?trailingExtra,
           IconButton(
             icon: const Icon(Icons.more_vert),
+            tooltip: 'More actions for ${track.title}',
             onPressed: () => showTrackContextMenu(context, track),
           ),
         ],

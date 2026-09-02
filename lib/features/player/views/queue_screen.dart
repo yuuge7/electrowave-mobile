@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/utils/format.dart';
 import '../../../shared/widgets/art_thumb.dart';
+import '../../../shared/widgets/deck.dart';
+import '../../../shared/widgets/state_views.dart';
 import '../providers/player_providers.dart';
 
 class QueueScreen extends ConsumerWidget {
@@ -23,7 +25,12 @@ class QueueScreen extends ConsumerWidget {
             _header(context, 'Now playing'),
             SliverToBoxAdapter(
               child: ListTile(
-                leading: ArtThumb(artPath: state.current!.albumArtPath),
+                leading: ArtThumb(
+                  artPath: state.current!.albumArtPath,
+                  seed: state.current!.album.isNotEmpty
+                      ? state.current!.album
+                      : state.current!.title,
+                ),
                 title: Text(state.current!.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -47,7 +54,10 @@ class QueueScreen extends ConsumerWidget {
                   key: ValueKey('manual-$index-${track.id}'),
                   child: ListTile(
                     onTap: () => controller.playManualQueueItem(index),
-                    leading: ArtThumb(artPath: track.albumArtPath),
+                    leading: ArtThumb(
+                      artPath: track.albumArtPath,
+                      seed: track.album.isNotEmpty ? track.album : track.title,
+                    ),
                     title: Text(track.title,
                         maxLines: 1, overflow: TextOverflow.ellipsis),
                     subtitle: Text(track.artist,
@@ -57,7 +67,7 @@ class QueueScreen extends ConsumerWidget {
                       children: [
                         IconButton(
                           icon: const Icon(Icons.close),
-                          tooltip: 'Remove from queue',
+                          tooltip: 'Remove ${track.title} from queue',
                           onPressed: () =>
                               controller.removeFromManualQueue(index),
                         ),
@@ -83,7 +93,10 @@ class QueueScreen extends ConsumerWidget {
                 final track = upcoming[index];
                 return ListTile(
                   onTap: () => controller.playContextTrack(track),
-                  leading: ArtThumb(artPath: track.albumArtPath),
+                  leading: ArtThumb(
+                      artPath: track.albumArtPath,
+                      seed: track.album.isNotEmpty ? track.album : track.title,
+                    ),
                   title: Text(track.title,
                       maxLines: 1, overflow: TextOverflow.ellipsis),
                   subtitle: Text(track.artist,
@@ -97,7 +110,14 @@ class QueueScreen extends ConsumerWidget {
               state.manualQueue.isEmpty &&
               upcoming.isEmpty)
             const SliverFillRemaining(
-              child: Center(child: Text('Queue is empty')),
+              hasScrollBody: false,
+              child: EmptyStateView(
+                icon: Icons.queue_music_outlined,
+                title: 'Queue is empty',
+                message: 'Play a track and the list it came from becomes the '
+                    'queue. Play next and Add to queue always jump ahead of '
+                    'it.',
+              ),
             ),
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
         ],
@@ -105,17 +125,8 @@ class QueueScreen extends ConsumerWidget {
     );
   }
 
-  Widget _header(BuildContext context, String text) {
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-        child: Text(
-          text,
-          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                color: Theme.of(context).colorScheme.primary,
-              ),
-        ),
-      ),
-    );
-  }
+  // Region names are engraved panel labels, not accent-coloured text: the
+  // accent means "this is what is playing", and a heading is not that.
+  Widget _header(BuildContext context, String text) =>
+      SliverToBoxAdapter(child: SectionHeader(text));
 }

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/database/database_provider.dart';
 import '../../../shared/widgets/art_thumb.dart';
+import '../../../shared/widgets/state_views.dart';
 import '../providers/browse_providers.dart';
 
 /// Removing a track from the library is a soft delete so play history and
@@ -63,20 +64,16 @@ class TrashScreen extends ConsumerWidget {
             ),
         ],
       ),
-      body: deleted.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(child: Text('Error: $error')),
+      body: AsyncView(
+        value: deleted,
         data: (tracks) {
           if (tracks.isEmpty) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(32),
-                child: Text(
-                  'Nothing here. Tracks you remove from the library show up '
-                  'in this list so you can put them back.',
-                  textAlign: TextAlign.center,
-                ),
-              ),
+            return const EmptyStateView(
+              icon: Icons.delete_outline,
+              title: 'Nothing removed',
+              message: 'Tracks you remove from the library land here so you '
+                  'can put them back. Their play history survives, and the '
+                  'audio files on disk are never touched.',
             );
           }
           return ListView.builder(
@@ -84,7 +81,10 @@ class TrashScreen extends ConsumerWidget {
             itemBuilder: (context, index) {
               final track = tracks[index];
               return ListTile(
-                leading: ArtThumb(artPath: track.albumArtPath),
+                leading: ArtThumb(
+                  artPath: track.albumArtPath,
+                  seed: track.album.isNotEmpty ? track.album : track.title,
+                ),
                 title: Text(track.title,
                     maxLines: 1, overflow: TextOverflow.ellipsis),
                 subtitle: Text('${track.artist} · ${track.album}',

@@ -21,8 +21,8 @@ migrate_working_dir/
 # VS Code
 .vscode/
 
-# Claude Code (machine-local permissions, contains absolute paths)
-.claude/settings.local.json
+*.md
+!README.md
 
 # Flutter / Dart / Pub
 **/doc/api/

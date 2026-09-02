@@ -1,5 +1,5 @@
 name: electrowave_mobile
-description: "A new Flutter project."
+description: "A local music player for Android. Your files, on your phone - no streaming, no accounts, no telemetry."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -75,6 +75,18 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # Both variable fonts, both SIL Open Font License 1.1 (licences sit
+  # beside them in assets/fonts). Declared once each: weights come from
+  # FontVariation('wght', n) in core/theme/typography.dart, not from
+  # separate files.
+  fonts:
+    - family: Archivo
+      fonts:
+        - asset: assets/fonts/Archivo.ttf
+    - family: MartianMono
+      fonts:
+        - asset: assets/fonts/MartianMono.ttf
 
   # To add assets to your application, add an assets section, like this:
   # assets:

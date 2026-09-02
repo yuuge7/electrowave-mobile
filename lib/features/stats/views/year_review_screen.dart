@@ -146,7 +146,13 @@ class _YearReviewScreenState extends ConsumerState<YearReviewScreen> {
                   child: Row(
                     children: [
                       SizedBox(width: 24, child: Text('${index + 1}')),
-                      ArtThumb(artPath: stat.track.albumArtPath, size: 44),
+                      ArtThumb(
+                        artPath: stat.track.albumArtPath,
+                        size: 44,
+                        seed: stat.track.album.isNotEmpty
+                            ? stat.track.album
+                            : stat.track.title,
+                      ),
                     ],
                   ),
                 ),

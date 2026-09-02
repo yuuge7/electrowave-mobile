@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/database/database.dart';
 import '../../player/providers/player_providers.dart';
 import '../../settings/providers/settings_providers.dart';
+import '../../../shared/widgets/state_views.dart';
 import '../../../shared/widgets/track_tile.dart';
 import '../providers/browse_providers.dart';
 import '../providers/library_providers.dart';
@@ -48,6 +49,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
     final sort = ref.watch(librarySortProvider);
     final scan = ref.watch(scanControllerProvider);
     final missing = ref.watch(missingFilesProvider).value ?? const {};
+    // The field's text lives in the provider, so the clear button and the
+    // "no results" copy both react without a local setState.
+    final searching = ref.watch(librarySearchInputProvider).isNotEmpty;
 
     ref.listen(scanControllerProvider, (previous, current) {
       final message = current.message;
@@ -65,7 +69,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
         actions: [
           PopupMenuButton<LibrarySort>(
             icon: const Icon(Icons.sort),
-            tooltip: 'Sort',
+            tooltip: 'Sort library',
             initialValue: sort,
             onSelected: (value) =>
                 ref.read(librarySortProvider.notifier).state = value,
@@ -102,20 +106,21 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
                   hintText: 'Search title, artist, album',
                   leading: const Icon(Icons.search),
                   trailing: [
-                    if (_searchController.text.isNotEmpty)
+                    if (searching)
                       IconButton(
                         icon: const Icon(Icons.clear),
+                        tooltip: 'Clear search',
                         onPressed: () {
                           _searchController.clear();
-                          ref.read(librarySearchProvider.notifier).state = '';
-                          setState(() {});
+                          ref
+                              .read(librarySearchInputProvider.notifier)
+                              .state = '';
                         },
                       ),
                   ],
-                  onChanged: (value) {
-                    ref.read(librarySearchProvider.notifier).state = value;
-                    setState(() {});
-                  },
+                  onChanged: (value) => ref
+                      .read(librarySearchInputProvider.notifier)
+                      .state = value,
                 ),
               ),
               TabBar(
@@ -150,7 +155,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
                 _TracksTab(
                   tracksAsync: tracksAsync,
                   missing: missing,
-                  searching: _searchController.text.isNotEmpty,
+                  searching: searching,
                   onAddFolder: _addFolder,
                   onAddFiles: _addFiles,
                 ),
@@ -184,9 +189,9 @@ class _TracksTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return tracksAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => Center(child: Text('Error: $error')),
+    return AsyncView(
+      value: tracksAsync,
+      onRetry: () => ref.invalidate(libraryTracksProvider),
       data: (tracks) {
         if (tracks.isEmpty) {
           return _EmptyLibrary(
@@ -266,33 +271,27 @@ class _EmptyLibrary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (searching) {
-      return const Center(child: Text('No tracks match your search'));
+      return const EmptyStateView(
+        icon: Icons.search_off,
+        title: 'No matches',
+        message: 'Nothing in your library matches that title, artist or '
+            'album. Try a shorter search.',
+      );
     }
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.library_music,
-              size: 72,
-              color: Theme.of(context).colorScheme.onSurfaceVariant),
-          const SizedBox(height: 16),
-          Text('Your library is empty',
-              style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          const Text('Scan a folder to add your music'),
-          const SizedBox(height: 24),
-          FilledButton.icon(
-            onPressed: onAddFolder,
-            icon: const Icon(Icons.folder_open),
-            label: const Text('Scan folder'),
-          ),
-          const SizedBox(height: 8),
-          TextButton.icon(
-            onPressed: onAddFiles,
-            icon: const Icon(Icons.audio_file),
-            label: const Text('Pick individual files'),
-          ),
-        ],
+    return EmptyStateView(
+      icon: Icons.library_music_outlined,
+      title: 'Your library is empty',
+      message: 'Point Electrowave at the folder your music lives in. It reads '
+          'tags and album art in place — nothing is copied or uploaded.',
+      action: FilledButton.icon(
+        onPressed: onAddFolder,
+        icon: const Icon(Icons.folder_open),
+        label: const Text('Scan a folder'),
+      ),
+      secondaryAction: TextButton.icon(
+        onPressed: onAddFiles,
+        icon: const Icon(Icons.audio_file),
+        label: const Text('Pick individual files'),
       ),
     );
   }

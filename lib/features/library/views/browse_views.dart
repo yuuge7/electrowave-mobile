@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/database/database.dart';
 import '../../../shared/utils/format.dart';
 import '../../../shared/widgets/art_thumb.dart';
+import '../../../shared/widgets/state_views.dart';
 import '../providers/browse_providers.dart';
 import 'track_list_screen.dart';
 
@@ -16,11 +17,19 @@ class AlbumsGrid extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final albums = ref.watch(albumsProvider);
 
-    return albums.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => Center(child: Text('Error: $error')),
+    return AsyncView(
+      value: albums,
+      skeleton: SkeletonKind.grid,
+      onRetry: () => ref.invalidate(albumsProvider),
       data: (list) {
-        if (list.isEmpty) return const Center(child: Text('No albums yet'));
+        if (list.isEmpty) {
+          return const EmptyStateView(
+            icon: Icons.album_outlined,
+            title: 'No albums yet',
+            message: 'Albums are grouped from your files\u2019 tags. Scan a '
+                'folder, or fix a missing album tag with the tag editor.',
+          );
+        }
         return GridView.builder(
           padding: const EdgeInsets.all(12),
           gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
@@ -64,6 +73,7 @@ class _AlbumCard extends StatelessWidget {
                 size: double.infinity,
                 decodeWidth: constraints.maxWidth,
                 borderRadius: 12,
+                seed: album.album,
               ),
             ),
           ),
@@ -91,17 +101,27 @@ class ArtistsList extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final artists = ref.watch(artistsProvider);
 
-    return artists.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => Center(child: Text('Error: $error')),
+    return AsyncView(
+      value: artists,
+      onRetry: () => ref.invalidate(artistsProvider),
       data: (list) {
-        if (list.isEmpty) return const Center(child: Text('No artists yet'));
+        if (list.isEmpty) {
+          return const EmptyStateView(
+            icon: Icons.person_outline,
+            title: 'No artists yet',
+            message: 'Artists come from your files\u2019 tags. Scan a folder '
+                'to fill this in.',
+          );
+        }
         return ListView.builder(
           itemCount: list.length,
           itemBuilder: (context, index) {
             final artist = list[index];
             return ListTile(
-              leading: ArtThumb(artPath: artist.albumArtPath),
+              leading: ArtThumb(
+                artPath: artist.albumArtPath,
+                seed: artist.artist,
+              ),
               title: Text(artist.artist,
                   maxLines: 1, overflow: TextOverflow.ellipsis),
               subtitle: Text(
@@ -128,11 +148,18 @@ class FoldersList extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final folders = ref.watch(foldersProvider);
 
-    return folders.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => Center(child: Text('Error: $error')),
+    return AsyncView(
+      value: folders,
+      onRetry: () => ref.invalidate(foldersProvider),
       data: (list) {
-        if (list.isEmpty) return const Center(child: Text('No folders yet'));
+        if (list.isEmpty) {
+          return const EmptyStateView(
+            icon: Icons.folder_outlined,
+            title: 'No folders yet',
+            message: 'This mirrors the directories your audio files actually '
+                'live in. Scan a folder to see them here.',
+          );
+        }
         return ListView.builder(
           itemCount: list.length,
           itemBuilder: (context, index) {
