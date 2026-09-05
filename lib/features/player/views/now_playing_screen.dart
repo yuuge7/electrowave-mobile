@@ -306,17 +306,22 @@ class _ChainStatus extends ConsumerWidget {
           icon: Icons.graphic_eq_rounded,
           onTap: () => context.push('/equalizer'),
         ),
-      if (sleepTimer != null)
-        StatusChip(
-          label: sleepTimer!.endOfTrack
-              ? 'Sleep · end of track'
-              : 'Sleep · ${formatDuration(sleepTimer!.remaining)}',
-          icon: Icons.bedtime_rounded,
-          tone: StatusTone.peak,
-          onTap: () => showSleepTimerSheet(context),
-        ),
+      // Always present, unlike the rest: the others report a setting that is
+      // already on, this one is also the only way to reach the timer from the
+      // player. Showing it only while running left no way to start it.
+      StatusChip(
+        label: switch (sleepTimer) {
+          null => 'Sleep timer',
+          final t when t.endOfTrack => 'Sleep · end of track',
+          final t => 'Sleep · ${formatDuration(t.remaining)}',
+        },
+        icon: sleepTimer == null
+            ? Icons.bedtime_outlined
+            : Icons.bedtime_rounded,
+        tone: sleepTimer == null ? StatusTone.neutral : StatusTone.peak,
+        onTap: () => showSleepTimerSheet(context),
+      ),
     ];
-    if (chips.isEmpty) return const SizedBox(height: 12);
 
     return Padding(
       padding: const EdgeInsets.only(top: 12),
