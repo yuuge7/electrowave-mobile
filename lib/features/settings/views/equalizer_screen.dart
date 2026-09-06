@@ -77,38 +77,44 @@ class EqualizerScreen extends ConsumerWidget {
             opacity: settings.eqEnabled ? 1 : 0.4,
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 16),
+              // One equal column per band: at their natural width the gain
+              // readouts push the row past the screen on a narrow phone at a
+              // large text scale.
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   for (var i = 0; i < kEqBandFrequencies.length; i++)
-                    Column(
-                      children: [
-                        Text(
-                          '${settings.eqGainsDb[i] > 0 ? '+' : ''}'
-                          '${settings.eqGainsDb[i].toStringAsFixed(0)}',
-                          style: theme.textTheme.bodySmall,
-                        ),
-                        SizedBox(
-                          height: 200,
-                          child: RotatedBox(
-                            quarterTurns: 3,
-                            child: Slider(
-                              value: settings.eqGainsDb[i],
-                              min: -kEqMaxGainDb,
-                              max: kEqMaxGainDb,
-                              divisions: (kEqMaxGainDb * 2).round(),
-                              onChanged: settings.eqEnabled
-                                  ? (value) => controller.setEqBand(i, value)
-                                  : null,
+                    Expanded(
+                      child: Column(
+                        children: [
+                          Text(
+                            '${settings.eqGainsDb[i] > 0 ? '+' : ''}'
+                            '${settings.eqGainsDb[i].toStringAsFixed(0)}',
+                            style: theme.textTheme.bodySmall,
+                            maxLines: 1,
+                          ),
+                          SizedBox(
+                            height: 200,
+                            child: RotatedBox(
+                              quarterTurns: 3,
+                              child: Slider(
+                                value: settings.eqGainsDb[i],
+                                min: -kEqMaxGainDb,
+                                max: kEqMaxGainDb,
+                                divisions: (kEqMaxGainDb * 2).round(),
+                                onChanged: settings.eqEnabled
+                                    ? (value) => controller.setEqBand(i, value)
+                                    : null,
+                              ),
                             ),
                           ),
-                        ),
-                        Text(_bandLabel(kEqBandFrequencies[i]),
-                            style: theme.textTheme.bodySmall),
-                        Text('Hz',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant)),
-                      ],
+                          Text(_bandLabel(kEqBandFrequencies[i]),
+                              style: theme.textTheme.bodySmall, maxLines: 1),
+                          Text('Hz',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant),
+                              maxLines: 1),
+                        ],
+                      ),
                     ),
                 ],
               ),

@@ -162,10 +162,16 @@ class _SmartPlaylistEditorScreenState
           const Divider(height: 32),
           DropdownButtonFormField<SmartSort>(
             initialValue: _definition.sort,
+            // Without this the field is only as wide as its label, and a long
+            // one ran past the arrow at a large text scale.
+            isExpanded: true,
             decoration: const InputDecoration(labelText: 'Sort by'),
             items: [
               for (final sort in SmartSort.values)
-                DropdownMenuItem(value: sort, child: Text(sort.label)),
+                DropdownMenuItem(
+                  value: sort,
+                  child: Text(sort.label, overflow: TextOverflow.ellipsis),
+                ),
             ],
             onChanged: (sort) =>
                 sort == null ? null : _update(_definition.copyWith(sort: sort)),

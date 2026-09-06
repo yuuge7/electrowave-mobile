@@ -324,71 +324,85 @@ class _RankRow extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(20, 9, 20, 9),
         child: Column(
           children: [
-            Row(
-              children: [
-                SizedBox(
-                  width: 22,
-                  child: Text(
-                    '$rank',
-                    style: type
-                        .instrument(12, weight: 500)
-                        .copyWith(color: scheme.onSurfaceVariant),
-                  ),
-                ),
-                if (artPath != null || rank > 0)
-                  ArtThumb(
-                    artPath: artPath,
-                    size: 38,
-                    borderRadius: 6,
-                    seed: seed,
-                  ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                      const SizedBox(height: 1),
-                      Text(
-                        subtitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: scheme.onSurfaceVariant,
-                            ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      primary,
+            LayoutBuilder(
+              builder: (context, constraints) => Row(
+                children: [
+                  SizedBox(
+                    width: 22,
+                    child: Text(
+                      '$rank',
                       style: type
-                          .instrument(11, weight: 500)
-                          .copyWith(color: scheme.onSurface),
+                          .instrument(12, weight: 500)
+                          .copyWith(color: scheme.onSurfaceVariant),
                     ),
-                    if (secondary != null) ...[
-                      const SizedBox(height: 3),
-                      Text(
-                        secondary!,
-                        style: type
-                            .instrument(9.5)
-                            .copyWith(color: tokens.peak),
+                  ),
+                  if (artPath != null || rank > 0)
+                    ArtThumb(
+                      artPath: artPath,
+                      size: 38,
+                      borderRadius: 6,
+                      seed: seed,
+                    ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                        const SizedBox(height: 1),
+                        Text(
+                          subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: scheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  // The figures are numbers and cannot be ellipsized, so at a
+                  // large text scale they crowded the title out of the row and
+                  // then ran past it. Cap them at a third of the row and let
+                  // them shrink to fit that instead.
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: constraints.maxWidth / 3,
+                    ),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            primary,
+                            style: type
+                                .instrument(11, weight: 500)
+                                .copyWith(color: scheme.onSurface),
+                          ),
+                          if (secondary != null) ...[
+                            const SizedBox(height: 3),
+                            Text(
+                              secondary!,
+                              style: type
+                                  .instrument(9.5)
+                                  .copyWith(color: tokens.peak),
+                            ),
+                          ],
+                        ],
                       ),
-                    ],
-                  ],
-                ),
-              ],
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 8),
             Padding(

@@ -174,35 +174,43 @@ class _TransportCounterState extends State<TransportCounter> {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => setState(() => _showRemaining = !_showRemaining),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
-          children: [
-            Text(
-              widget.format(widget.position),
-              style: type.counter(widget.size).copyWith(
-                color: widget.color ?? tokens.signal,
-              ),
-            ),
-            // A hairline slash instead of a gap: the two figures are one
-            // reading, and the old size jump made the second look like a
-            // footnote rather than the other half of it.
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: widget.size * 0.18),
-              child: Text(
-                '/',
-                style: type.counter(widget.size * 0.52, weight: 300).copyWith(
-                  color: scheme.onSurfaceVariant.withValues(alpha: 0.45),
+        // The counter is sized in points, so a large accessibility text scale
+        // pushes it past the margin. Scale the whole reading down rather than
+        // wrap or clip it: it is one figure and has to stay one figure.
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                widget.format(widget.position),
+                style: type.counter(widget.size).copyWith(
+                  color: widget.color ?? tokens.signal,
                 ),
               ),
-            ),
-            Text(
-              secondary,
-              style: type.counter(widget.size * 0.52, weight: 500).copyWith(
-                color: scheme.onSurfaceVariant,
+              // A hairline slash instead of a gap: the two figures are one
+              // reading, and the old size jump made the second look like a
+              // footnote rather than the other half of it.
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: widget.size * 0.18),
+                child: Text(
+                  '/',
+                  style: type.counter(widget.size * 0.52, weight: 300).copyWith(
+                    color: scheme.onSurfaceVariant.withValues(alpha: 0.45),
+                  ),
+                ),
               ),
-            ),
-          ],
+              Text(
+                secondary,
+                style: type.counter(widget.size * 0.52, weight: 500).copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/database/database_provider.dart';
 import '../../../shared/widgets/track_context_menu.dart' show promptForText;
 import '../../../core/theme/tokens.dart';
+import '../../../shared/widgets/app_sheet.dart';
 import '../../../shared/widgets/art_thumb.dart';
 import '../../../shared/widgets/deck.dart';
 import '../../../shared/widgets/state_views.dart';
@@ -37,30 +38,27 @@ class PlaylistsScreen extends ConsumerWidget {
 
   /// The + button covers both kinds, so it asks which one first.
   Future<void> _createPlaylist(BuildContext context, WidgetRef ref) async {
-    final smart = await showModalBottomSheet<bool>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.queue_music),
-              title: const Text('New playlist'),
-              subtitle: const Text('Tracks you add by hand'),
-              onTap: () => Navigator.pop(sheetContext, false),
+    final smart = await showAppSheet<bool>(
+      context,
+      builder: (sheetContext) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.queue_music),
+            title: const Text('New playlist'),
+            subtitle: const Text('Tracks you add by hand'),
+            onTap: () => Navigator.pop(sheetContext, false),
+          ),
+          ListTile(
+            leading: const Icon(Icons.auto_awesome),
+            title: const Text('New smart playlist'),
+            subtitle: const Text(
+              'Rules the library fills in for you, kept live',
             ),
-            ListTile(
-              leading: const Icon(Icons.auto_awesome),
-              title: const Text('New smart playlist'),
-              subtitle: const Text(
-                'Rules the library fills in for you, kept live',
-              ),
-              onTap: () => Navigator.pop(sheetContext, true),
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
+            onTap: () => Navigator.pop(sheetContext, true),
+          ),
+          const SizedBox(height: 8),
+        ],
       ),
     );
     if (smart == null || !context.mounted) return;

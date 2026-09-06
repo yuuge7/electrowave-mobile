@@ -112,13 +112,18 @@ class _YearReviewScreenState extends ConsumerState<YearReviewScreen> {
             padding: const EdgeInsets.all(16),
             child: RepaintBoundary(
               key: _cardKey,
-              child: _ShareCard(
-                year: _year,
-                listenedMs: listenedMs,
-                distinctTracks: distinctTracks,
-                shape: shape,
-                topTrack: topTracks.isEmpty ? null : topTracks.first,
-                topArtist: topArtists.isEmpty ? null : topArtists.first,
+              // The card is a fixed piece of artwork that gets exported as an
+              // image: at a large accessibility text scale its type ran past
+              // the edge, and the shared PNG would differ per phone.
+              child: MediaQuery.withNoTextScaling(
+                child: _ShareCard(
+                  year: _year,
+                  listenedMs: listenedMs,
+                  distinctTracks: distinctTracks,
+                  shape: shape,
+                  topTrack: topTracks.isEmpty ? null : topTracks.first,
+                  topArtist: topArtists.isEmpty ? null : topArtists.first,
+                ),
               ),
             ),
           ),

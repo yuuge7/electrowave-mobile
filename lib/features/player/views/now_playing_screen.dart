@@ -7,6 +7,7 @@ import '../../../core/database/database.dart';
 import '../../../core/database/database_provider.dart';
 import '../../../core/theme/tokens.dart';
 import '../../../shared/utils/format.dart';
+import '../../../shared/widgets/app_sheet.dart';
 import '../../../shared/widgets/art_thumb.dart';
 import '../../../shared/widgets/deck.dart';
 import '../../../shared/widgets/state_views.dart';
@@ -134,76 +135,105 @@ class NowPlayingScreen extends ConsumerWidget {
             if ((details.primaryVelocity ?? 0) > 260) context.pop();
           },
           child: SafeArea(
-            child: Column(
-              children: [
-                // The art takes whatever the fixed furniture below does not,
-                // rather than a fraction of the screen with spacers around
-                // it — that left a dead band between the cover and the title
-                // on tall phones and squeezed the counter on short ones.
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 4, 24, 20),
-                    // Slack belongs above the cover, not between the cover
-                    // and the title that names it.
-                    child: Align(
-                      alignment: Alignment.bottomCenter,
-                      child: AspectRatio(
-                        aspectRatio: 1,
-                        child: _SwipeableArt(
-                          track: track,
-                          onNext: controller.next,
-                          onPrevious: controller.previous,
+            child: LayoutBuilder(
+              builder: (context, constraints) => Column(
+                children: [
+                  // The art takes whatever the fixed furniture below does
+                  // not, rather than a fraction of the screen with spacers
+                  // around it — that left a dead band between the cover and
+                  // the title on tall phones, and squeezed the counter on
+                  // short ones.
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 4, 24, 20),
+                      // Slack belongs above the cover, not between the cover
+                      // and the title that names it.
+                      child: Align(
+                        alignment: Alignment.bottomCenter,
+                        child: AspectRatio(
+                          aspectRatio: 1,
+                          child: _SwipeableArt(
+                            track: track,
+                            onNext: controller.next,
+                            onPrevious: controller.previous,
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        track.title,
-                        style: Theme.of(context).textTheme.headlineSmall,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${track.artist}'
-                        '${track.album.isNotEmpty ? ' · ${track.album}' : ''}',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: scheme.onSurfaceVariant,
+                  // Title, counter and keys are fixed furniture that grows
+                  // with the text scale, while the cover above absorbs the
+                  // slack. Past a large accessibility scale on a short phone
+                  // there is no slack left and the column ran off the bottom,
+                  // so cap the furniture and scale it down to fit instead.
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: constraints.maxHeight * 0.72,
+                    ),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: SizedBox(
+                        width: constraints.maxWidth,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                track.title,
+                                style: Theme.of(
+                                  context,
+                                ).textTheme.headlineSmall,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                track.album.isEmpty
+                                    ? track.artist
+                                    : '${track.artist} · ${track.album}',
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(
+                                      color: scheme.onSurfaceVariant,
+                                    ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              _ChainStatus(
+                                settings: settings,
+                                sleepTimer: sleepTimer,
+                              ),
+                              const SizedBox(height: 18),
+                              _Transport(
+                                position: position,
+                                duration: duration,
+                                accent: accent,
+                                onSeek: controller.seek,
+                              ),
+                              const SizedBox(height: 6),
+                              _Controls(
+                                playing: playing,
+                                state: state,
+                                // Deliberately the brand signal, not the
+                                // cover's accent: a control that changes
+                                // colour with the artwork can land on red,
+                                // and a red play button reads as "stop".
+                                accent: tokens.signal,
+                                controller: controller,
+                              ),
+                            ],
+                          ),
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                       ),
-                      _ChainStatus(settings: settings, sleepTimer: sleepTimer),
-                      const SizedBox(height: 18),
-                      _Transport(
-                        position: position,
-                        duration: duration,
-                        accent: accent,
-                        onSeek: controller.seek,
-                      ),
-                      const SizedBox(height: 6),
-                      _Controls(
-                        playing: playing,
-                        state: state,
-                        // Deliberately the brand signal, not the cover's
-                        // accent: a control that changes colour with the
-                        // artwork can land on red, and a red play button
-                        // reads as "stop".
-                        accent: tokens.signal,
-                        controller: controller,
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 14),
-                _UpNext(track: upNext, isManual: state.manualQueue.isNotEmpty),
-              ],
+                  const SizedBox(height: 14),
+                  _UpNext(
+                    track: upNext,
+                    isManual: state.manualQueue.isNotEmpty,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -290,8 +320,8 @@ class _ChainStatus extends ConsumerWidget {
           label: '${settings.playbackRate}×',
           icon: Icons.speed_rounded,
           tone: StatusTone.signal,
-          onTap: () => showModalBottomSheet(
-            context: context,
+          onTap: () => showAppSheet<void>(
+            context,
             builder: (_) => const _SpeedSheet(),
           ),
         ),
@@ -342,27 +372,25 @@ class _SpeedSheet extends ConsumerWidget {
     final rate = ref.watch(
       settingsControllerProvider.select((s) => s.playbackRate),
     );
-    return SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SectionHeader('Playback speed'),
-          for (final value in _rates)
-            ListTile(
-              title: Text(value == 1.0 ? 'Normal (1×)' : '$value×'),
-              trailing: value == rate
-                  ? Icon(Icons.check_rounded, color: context.deck.signal)
-                  : null,
-              onTap: () {
-                ref
-                    .read(settingsControllerProvider.notifier)
-                    .setPlaybackRate(value);
-                Navigator.pop(context);
-              },
-            ),
-          const SizedBox(height: 8),
-        ],
-      ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const SectionHeader('Playback speed'),
+        for (final value in _rates)
+          ListTile(
+            title: Text(value == 1.0 ? 'Normal (1×)' : '$value×'),
+            trailing: value == rate
+                ? Icon(Icons.check_rounded, color: context.deck.signal)
+                : null,
+            onTap: () {
+              ref
+                  .read(settingsControllerProvider.notifier)
+                  .setPlaybackRate(value);
+              Navigator.pop(context);
+            },
+          ),
+        const SizedBox(height: 8),
+      ],
     );
   }
 }
@@ -461,88 +489,105 @@ class _Controls extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final idle = scheme.onSurfaceVariant;
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        IconButton(
-          icon: const Icon(Icons.shuffle_rounded),
-          color: state.shuffle ? accent : idle,
-          tooltip: state.shuffle ? 'Shuffle on' : 'Shuffle off',
-          onPressed: () {
-            HapticFeedback.selectionClick();
-            controller.toggleShuffle();
-          },
-        ),
-        IconButton(
-          iconSize: 40,
-          icon: const Icon(Icons.skip_previous_rounded),
-          color: scheme.onSurface,
-          tooltip: 'Previous track',
-          onPressed: controller.previous,
-        ),
-        // The one filled control on the screen. Square-cornered, because the
-        // rest of the app is, and sized for a thumb.
-        // The lit key. On a deck the transport is neutral hardware and the
-        // counter is the illuminated part; a solid accent block here was
-        // out-shouting the counter, which is what this screen is built
-        // around. Backlit rather than filled keeps it unmistakably primary
-        // without taking the eye first.
-        Material(
-          color: Color.alphaBlend(
-            accent.withValues(alpha: 0.16),
-            scheme.surface,
-          ),
-          borderRadius: BorderRadius.circular(14),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(14),
-            onTap: () {
-              HapticFeedback.mediumImpact();
-              controller.togglePlayPause();
-            },
-            child: Container(
-              width: 74,
-              height: 58,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: accent.withValues(alpha: 0.55),
-                  width: 1.5,
+    // Five fixed-size keys do not fit the 320dp phones at their design size,
+    // and the row overflowed rather than giving. Below the width the keys
+    // want, the whole transport scales down together — at or above it, the
+    // row spreads to the margins exactly as before.
+    return LayoutBuilder(
+      builder: (context, constraints) => FittedBox(
+        fit: BoxFit.scaleDown,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minWidth: constraints.maxWidth),
+          child: IntrinsicWidth(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.shuffle_rounded),
+                  color: state.shuffle ? accent : idle,
+                  tooltip: state.shuffle ? 'Shuffle on' : 'Shuffle off',
+                  onPressed: () {
+                    HapticFeedback.selectionClick();
+                    controller.toggleShuffle();
+                  },
                 ),
-              ),
-              child: Icon(
-                playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                size: 34,
-                color: accent,
-                semanticLabel: playing ? 'Pause' : 'Play',
-              ),
+                IconButton(
+                  iconSize: 40,
+                  icon: const Icon(Icons.skip_previous_rounded),
+                  color: scheme.onSurface,
+                  tooltip: 'Previous track',
+                  onPressed: controller.previous,
+                ),
+                // The one filled control on the screen. Square-cornered,
+                // because the rest of the app is, and sized for a thumb.
+                // The lit key. On a deck the transport is neutral hardware
+                // and the counter is the illuminated part; a solid accent
+                // block here was out-shouting the counter, which is what
+                // this screen is built around. Backlit rather than filled
+                // keeps it unmistakably primary without taking the eye
+                // first.
+                Material(
+                  color: Color.alphaBlend(
+                    accent.withValues(alpha: 0.16),
+                    scheme.surface,
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: () {
+                      HapticFeedback.mediumImpact();
+                      controller.togglePlayPause();
+                    },
+                    child: Container(
+                      width: 74,
+                      height: 58,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: accent.withValues(alpha: 0.55),
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Icon(
+                        playing
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
+                        size: 34,
+                        color: accent,
+                        semanticLabel: playing ? 'Pause' : 'Play',
+                      ),
+                    ),
+                  ),
+                ),
+                IconButton(
+                  iconSize: 40,
+                  icon: const Icon(Icons.skip_next_rounded),
+                  color: scheme.onSurface,
+                  tooltip: 'Next track',
+                  onPressed: () => controller.next(),
+                ),
+                IconButton(
+                  icon: Icon(
+                    state.repeat == RepeatMode.one
+                        ? Icons.repeat_one_rounded
+                        : Icons.repeat_rounded,
+                  ),
+                  color: state.repeat != RepeatMode.off ? accent : idle,
+                  tooltip: switch (state.repeat) {
+                    RepeatMode.off => 'Repeat off',
+                    RepeatMode.all => 'Repeat all',
+                    RepeatMode.one => 'Repeat one',
+                  },
+                  onPressed: () {
+                    HapticFeedback.selectionClick();
+                    controller.cycleRepeat();
+                  },
+                ),
+              ],
             ),
           ),
         ),
-        IconButton(
-          iconSize: 40,
-          icon: const Icon(Icons.skip_next_rounded),
-          color: scheme.onSurface,
-          tooltip: 'Next track',
-          onPressed: () => controller.next(),
-        ),
-        IconButton(
-          icon: Icon(
-            state.repeat == RepeatMode.one
-                ? Icons.repeat_one_rounded
-                : Icons.repeat_rounded,
-          ),
-          color: state.repeat != RepeatMode.off ? accent : idle,
-          tooltip: switch (state.repeat) {
-            RepeatMode.off => 'Repeat off',
-            RepeatMode.all => 'Repeat all',
-            RepeatMode.one => 'Repeat one',
-          },
-          onPressed: () {
-            HapticFeedback.selectionClick();
-            controller.cycleRepeat();
-          },
-        ),
-      ],
+      ),
     );
   }
 }

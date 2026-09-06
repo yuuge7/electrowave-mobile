@@ -6,6 +6,7 @@ import 'package:home_widget/home_widget.dart';
 import '../../../core/database/database_provider.dart';
 import '../../library/providers/browse_providers.dart';
 import '../../library/providers/library_providers.dart';
+import '../../../shared/widgets/app_sheet.dart';
 import '../../../shared/widgets/deck.dart';
 import '../../player/views/sleep_timer_sheet.dart';
 import '../providers/settings_providers.dart';
@@ -83,9 +84,8 @@ class SettingsScreen extends ConsumerWidget {
             subtitle: Text(settings.inactivityStopMinutes == 0
                 ? 'Off · keep playing until stopped'
                 : 'After ${formatInactivityStop(settings.inactivityStopMinutes)} without touching anything'),
-            onTap: () => showModalBottomSheet(
-              context: context,
-              showDragHandle: true,
+            onTap: () => showAppSheet<void>(
+              context,
               builder: (sheetContext) => const _InactivityStopSheet(),
             ),
           ),
@@ -122,9 +122,8 @@ class SettingsScreen extends ConsumerWidget {
             subtitle: Text(settings.playbackRate == 1.0
                 ? 'Normal'
                 : '${settings.playbackRate}×'),
-            onTap: () => showModalBottomSheet(
-              context: context,
-              showDragHandle: true,
+            onTap: () => showAppSheet<void>(
+              context,
               builder: (sheetContext) => const _SpeedSheet(),
             ),
           ),
@@ -138,9 +137,8 @@ class SettingsScreen extends ConsumerWidget {
               AppThemeMode.light => 'Light',
               AppThemeMode.dark => 'Dark',
             }),
-            onTap: () => showModalBottomSheet(
-              context: context,
-              showDragHandle: true,
+            onTap: () => showAppSheet<void>(
+              context,
               builder: (sheetContext) => const _ThemeSheet(),
             ),
           ),
@@ -274,32 +272,28 @@ class _ThemeSheet extends ConsumerWidget {
     final settings = ref.watch(settingsControllerProvider);
     final controller = ref.read(settingsControllerProvider.notifier);
 
-    return SafeArea(
-      child: RadioGroup<AppThemeMode>(
-        groupValue: settings.themeMode,
-        onChanged: (mode) {
-          if (mode != null) controller.setThemeMode(mode);
-        },
-        child: const SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              RadioListTile<AppThemeMode>(
-                value: AppThemeMode.system,
-                title: Text('Follow system'),
-              ),
-              RadioListTile<AppThemeMode>(
-                value: AppThemeMode.light,
-                title: Text('Light'),
-              ),
-              RadioListTile<AppThemeMode>(
-                value: AppThemeMode.dark,
-                title: Text('Dark'),
-              ),
-              SizedBox(height: 8),
-            ],
+    return RadioGroup<AppThemeMode>(
+      groupValue: settings.themeMode,
+      onChanged: (mode) {
+        if (mode != null) controller.setThemeMode(mode);
+      },
+      child: const Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          RadioListTile<AppThemeMode>(
+            value: AppThemeMode.system,
+            title: Text('Follow system'),
           ),
-        ),
+          RadioListTile<AppThemeMode>(
+            value: AppThemeMode.light,
+            title: Text('Light'),
+          ),
+          RadioListTile<AppThemeMode>(
+            value: AppThemeMode.dark,
+            title: Text('Dark'),
+          ),
+          SizedBox(height: 8),
+        ],
       ),
     );
   }
@@ -316,27 +310,21 @@ class _SpeedSheet extends ConsumerWidget {
         settingsControllerProvider.select((settings) => settings.playbackRate));
     final controller = ref.read(settingsControllerProvider.notifier);
 
-    return SafeArea(
-      child: RadioGroup<double>(
-        groupValue: rate,
-        onChanged: (value) {
-          if (value != null) controller.setPlaybackRate(value);
-        },
-        // Scrollable: seven rows plus the mini player and the navigation bar
-        // overflow a short screen otherwise.
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final value in _rates)
-                RadioListTile<double>(
-                  value: value,
-                  title: Text(value == 1.0 ? 'Normal (1×)' : '$value×'),
-                ),
-              const SizedBox(height: 8),
-            ],
-          ),
-        ),
+    return RadioGroup<double>(
+      groupValue: rate,
+      onChanged: (value) {
+        if (value != null) controller.setPlaybackRate(value);
+      },
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final value in _rates)
+            RadioListTile<double>(
+              value: value,
+              title: Text(value == 1.0 ? 'Normal (1×)' : '$value×'),
+            ),
+          const SizedBox(height: 8),
+        ],
       ),
     );
   }
@@ -358,37 +346,30 @@ class _InactivityStopSheet extends ConsumerWidget {
         .select((settings) => settings.inactivityStopMinutes));
     final controller = ref.read(settingsControllerProvider.notifier);
 
-    return SafeArea(
-      child: RadioGroup<int>(
-        groupValue: minutes,
-        onChanged: (value) {
-          if (value != null) controller.setInactivityStopMinutes(value);
-        },
-        // Scrollable: the blurb plus six rows, the mini player and the
-        // navigation bar overflow a short screen otherwise.
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Text(
-                  'Playback stops if you have not touched the app, the '
-                  'notification, the widget or a headset button for this '
-                  'long. Skipping tracks on its own does not count.',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-              for (final value in kInactivityStopChoicesMinutes)
-                RadioListTile<int>(
-                  value: value,
-                  title:
-                      Text(value == 0 ? 'Off' : formatInactivityStop(value)),
-                ),
-              const SizedBox(height: 8),
-            ],
+    return RadioGroup<int>(
+      groupValue: minutes,
+      onChanged: (value) {
+        if (value != null) controller.setInactivityStopMinutes(value);
+      },
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(
+              'Playback stops if you have not touched the app, the '
+              'notification, the widget or a headset button for this '
+              'long. Skipping tracks on its own does not count.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
           ),
-        ),
+          for (final value in kInactivityStopChoicesMinutes)
+            RadioListTile<int>(
+              value: value,
+              title: Text(value == 0 ? 'Off' : formatInactivityStop(value)),
+            ),
+          const SizedBox(height: 8),
+        ],
       ),
     );
   }
