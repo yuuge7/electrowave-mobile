@@ -17,6 +17,7 @@ import 'features/playlists/views/playlist_detail_screen.dart';
 import 'features/playlists/views/playlists_screen.dart';
 import 'features/playlists/views/smart_playlist_detail_screen.dart';
 import 'features/playlists/views/smart_playlist_editor_screen.dart';
+import 'features/playlists/views/track_picker_screen.dart';
 import 'features/settings/providers/settings_providers.dart';
 import 'features/settings/services/settings_persistence.dart';
 import 'features/settings/views/settings_screen.dart';
@@ -45,7 +46,17 @@ final GoRouter appRouter = GoRouter(
             path: '/playlists',
             builder: (context, state) => const PlaylistsScreen(),
             routes: [
-              // Ahead of ':id', which would otherwise swallow "smart".
+              // Ahead of ':id', which would otherwise swallow "new" and
+              // "smart" as playlist ids.
+              //
+              // Both pickers sit on the root navigator: picking tracks is one
+              // task with its own bottom bar, and the mini player and nav bar
+              // would sit under it competing for the same edge.
+              GoRoute(
+                path: 'new',
+                parentNavigatorKey: _rootNavigatorKey,
+                builder: (context, state) => const TrackPickerScreen(),
+              ),
               GoRoute(
                 path: 'smart/new',
                 builder: (context, state) => const SmartPlaylistEditorScreen(),
@@ -72,6 +83,16 @@ final GoRouter appRouter = GoRouter(
                   playlistId:
                       int.tryParse(state.pathParameters['id'] ?? '') ?? -1,
                 ),
+                routes: [
+                  GoRoute(
+                    path: 'add',
+                    parentNavigatorKey: _rootNavigatorKey,
+                    builder: (context, state) => TrackPickerScreen(
+                      playlistId:
+                          int.tryParse(state.pathParameters['id'] ?? '') ?? -1,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

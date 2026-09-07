@@ -37,7 +37,7 @@ class PlaylistsScreen extends ConsumerWidget {
   }
 
   /// The + button covers both kinds, so it asks which one first.
-  Future<void> _createPlaylist(BuildContext context, WidgetRef ref) async {
+  Future<void> _createPlaylist(BuildContext context) async {
     final smart = await showAppSheet<bool>(
       context,
       builder: (sheetContext) => Column(
@@ -46,7 +46,7 @@ class PlaylistsScreen extends ConsumerWidget {
           ListTile(
             leading: const Icon(Icons.queue_music),
             title: const Text('New playlist'),
-            subtitle: const Text('Tracks you add by hand'),
+            subtitle: const Text('Pick the tracks yourself'),
             onTap: () => Navigator.pop(sheetContext, false),
           ),
           ListTile(
@@ -63,18 +63,7 @@ class PlaylistsScreen extends ConsumerWidget {
     );
     if (smart == null || !context.mounted) return;
 
-    if (smart) {
-      context.push('/playlists/smart/new');
-      return;
-    }
-    final name = await promptForText(
-      context,
-      title: 'New playlist',
-      hint: 'Playlist name',
-    );
-    if (name != null && name.trim().isNotEmpty) {
-      await ref.read(databaseProvider).createPlaylist(name.trim());
-    }
+    context.push(smart ? '/playlists/smart/new' : '/playlists/new');
   }
 
   @override
@@ -98,7 +87,7 @@ class PlaylistsScreen extends ConsumerWidget {
               borderRadius: BorderRadius.circular(12),
               side: BorderSide(color: signal.withValues(alpha: 0.55), width: 1.5),
             ),
-            onPressed: () => _createPlaylist(context, ref),
+            onPressed: () => _createPlaylist(context),
             child: const Icon(Icons.add),
           );
         },
@@ -113,7 +102,7 @@ class PlaylistsScreen extends ConsumerWidget {
               message: 'Build one by hand, or write rules and let the library '
                   'keep it filled in for you.',
               action: FilledButton.icon(
-                onPressed: () => _createPlaylist(context, ref),
+                onPressed: () => _createPlaylist(context),
                 icon: const Icon(Icons.add),
                 label: const Text('New playlist'),
               ),
@@ -207,6 +196,8 @@ class PlaylistsScreen extends ConsumerWidget {
                   onSelected: (action) async {
                     final db = ref.read(databaseProvider);
                     switch (action) {
+                      case 'add':
+                        context.push('/playlists/${entry.playlist.id}/add');
                       case 'rename':
                         final name = await promptForText(
                           context,
@@ -230,6 +221,7 @@ class PlaylistsScreen extends ConsumerWidget {
                     }
                   },
                   itemBuilder: (context) => const [
+                    PopupMenuItem(value: 'add', child: Text('Add tracks')),
                     PopupMenuItem(value: 'rename', child: Text('Rename')),
                     PopupMenuItem(value: 'delete', child: Text('Delete')),
                   ],

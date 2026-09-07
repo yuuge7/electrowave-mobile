@@ -903,6 +903,51 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
+  /// Append a whole selection in one pass, keeping [trackIds] in the order
+  /// they were picked. Ids already on the playlist are skipped, and the
+  /// returned count is how many rows were actually new.
+  ///
+  /// The picker hands over fifty tracks at a time. Looping
+  /// [addTrackToPlaylist] would run a max-position query and a transaction per
+  /// track, so the position is walked forward once here instead.
+  Future<int> addTracksToPlaylist(int playlistId, List<int> trackIds) async {
+    if (trackIds.isEmpty) return 0;
+    return transaction(() async {
+      final existing = await (select(playlistTracks)
+            ..where((pt) => pt.playlistId.equals(playlistId)))
+          .get();
+      final present = {for (final row in existing) row.trackId};
+      var position = -1;
+      for (final row in existing) {
+        if (row.position > position) position = row.position;
+      }
+
+      final rows = <PlaylistTracksCompanion>[];
+      for (final trackId in trackIds) {
+        if (!present.add(trackId)) continue;
+        rows.add(
+          PlaylistTracksCompanion(
+            playlistId: Value(playlistId),
+            trackId: Value(trackId),
+            position: Value(++position),
+          ),
+        );
+      }
+      if (rows.isEmpty) return 0;
+      await batch(
+        (b) => b.insertAll(playlistTracks, rows, mode: InsertMode.insertOrIgnore),
+      );
+      return rows.length;
+    });
+  }
+
+  /// Create a playlist and fill it in one step, for the "new playlist" picker.
+  Future<int> createPlaylistWithTracks(String name, List<int> trackIds) async {
+    final id = await createPlaylist(name);
+    await addTracksToPlaylist(id, trackIds);
+    return id;
+  }
+
   Future<void> removeTrackFromPlaylist(int playlistId, int trackId) async {
     await (delete(playlistTracks)..where(
           (pt) => pt.playlistId.equals(playlistId) & pt.trackId.equals(trackId),

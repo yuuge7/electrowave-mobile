@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/database/database_provider.dart';
@@ -24,6 +25,11 @@ class PlaylistDetailScreen extends ConsumerWidget {
       appBar: AppBar(
         title: Text(playlist?.name ?? 'Playlist'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.playlist_add),
+            tooltip: 'Add tracks',
+            onPressed: () => context.push('/playlists/$playlistId/add'),
+          ),
           tracksAsync.maybeWhen(
             data: (tracks) => tracks.isEmpty
                 ? const SizedBox.shrink()
@@ -44,11 +50,24 @@ class PlaylistDetailScreen extends ConsumerWidget {
         value: tracksAsync,
         data: (tracks) {
           if (tracks.isEmpty) {
-            return const EmptyStateView(
+            return EmptyStateView(
               icon: Icons.playlist_add,
               title: 'Empty playlist',
-              message: 'Add tracks from anywhere in the library: long-press a '
-                  'track, then Add to playlist.',
+              message: 'Pick tracks from your library — search, take whole '
+                  'albums, or hold to grab a run of them at once.',
+              action: FilledButton.icon(
+                onPressed: () => context.push('/playlists/$playlistId/add'),
+                icon: const Icon(Icons.add),
+                label: const Text('Add tracks'),
+              ),
+              secondaryAction: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8),
+                child: Text(
+                  'One at a time still works: long-press any track in the '
+                  'library, then Add to playlist.',
+                  textAlign: TextAlign.center,
+                ),
+              ),
             );
           }
           return ReorderableListView.builder(

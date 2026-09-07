@@ -8,6 +8,7 @@ import 'package:electrowave_mobile/features/library/views/track_list_screen.dart
 import 'package:electrowave_mobile/features/playlists/providers/playlist_providers.dart';
 import 'package:electrowave_mobile/features/playlists/views/playlists_screen.dart';
 import 'package:electrowave_mobile/features/playlists/views/smart_playlist_editor_screen.dart';
+import 'package:electrowave_mobile/features/playlists/views/track_picker_screen.dart';
 import 'package:electrowave_mobile/features/player/providers/player_providers.dart';
 import 'package:electrowave_mobile/features/player/views/now_playing_screen.dart';
 import 'package:electrowave_mobile/features/player/views/queue_screen.dart';
@@ -135,6 +136,22 @@ Future<void> _pump(
             ),
           ]),
         ),
+        playlistProvider(1).overrideWith(
+          (ref) => Stream.value(
+            Playlist(
+              id: 1,
+              name: 'Long walks and longer drives',
+              createdAt: DateTime(2024, 5, 5),
+            ),
+          ),
+        ),
+        playlistTracksProvider(1).overrideWith(
+          (ref) => Stream.value([_queued]),
+        ),
+        // The picker opens on artist order.
+        pickerLibraryProvider(
+          LibrarySort.artist,
+        ).overrideWith((ref) => Stream.value([_track, _queued])),
         smartPlaylistsProvider.overrideWith(
           (ref) => Stream.value([
             SmartPlaylist(
@@ -398,6 +415,55 @@ void main() {
           );
 
           expect(find.text('Long walks and longer drives'), findsWidgets);
+
+          await _scrollThrough(tester);
+        });
+      }
+    }
+  });
+
+  group('track picker fits', () {
+    for (final entry in _sizes.entries) {
+      for (final scale in const [1.0, 1.3, 2.0]) {
+        testWidgets('new playlist — ${entry.key} at ${scale}x text',
+            (tester) async {
+          await _pump(
+            tester,
+            const TrackPickerScreen(),
+            size: entry.value,
+            textScale: scale,
+          );
+
+          expect(find.text(_track.title), findsWidgets);
+
+          // Picking one is what puts the counter in the tally bar, which is
+          // the tallest thing on the screen at 2x text.
+          await tester.tap(find.text(_track.title).first);
+          await tester.pumpAndSettle();
+          expect(find.text('1'), findsOneWidget);
+
+          await _scrollThrough(tester);
+
+          // Album and artist rows carry a second line and a fraction label,
+          // so they need pumping too.
+          for (final tab in const ['Albums', 'Artists']) {
+            await tester.tap(find.text(tab));
+            await tester.pumpAndSettle();
+          }
+        });
+
+        testWidgets('adding to a playlist — ${entry.key} at ${scale}x text',
+            (tester) async {
+          await _pump(
+            tester,
+            const TrackPickerScreen(playlistId: 1),
+            size: entry.value,
+            textScale: scale,
+          );
+
+          // _queued is already on the playlist, so its row is the disabled one.
+          expect(find.text(_track.title), findsWidgets);
+          expect(find.text('IN LIST'), findsWidgets);
 
           await _scrollThrough(tester);
         });

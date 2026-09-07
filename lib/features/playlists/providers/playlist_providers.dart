@@ -69,3 +69,21 @@ final smartPlaylistPreviewProvider = StreamProvider.family<List<Track>, String>(
     );
   },
 );
+
+// ---------------------------------------------------------------------------
+// Track picker
+// ---------------------------------------------------------------------------
+
+/// The whole library, unfiltered, for the track picker.
+///
+/// The picker searches and groups in memory rather than re-querying. Its
+/// search box is its own — routing it through the library's search state would
+/// retype the Library tab underneath — and the album and artist tabs have to
+/// stay consistent with the exact track list they were grouped from, which is
+/// only guaranteed when all three read one snapshot.
+final pickerLibraryProvider = StreamProvider.family<List<Track>, LibrarySort>((
+  ref,
+  sort,
+) {
+  return ref.watch(databaseProvider).watchLibrary(sort: sort);
+});
