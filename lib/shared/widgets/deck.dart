@@ -232,12 +232,17 @@ class StatusChip extends StatelessWidget {
     this.icon,
     this.onTap,
     this.tone = StatusTone.neutral,
+    this.semanticLabel,
   });
 
   final String label;
   final IconData? icon;
   final VoidCallback? onTap;
   final StatusTone tone;
+
+  /// Spoken instead of [label] where the engraved form is too terse to read
+  /// aloud — "1.5×" is a readout, not a sentence.
+  final String? semanticLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -265,9 +270,18 @@ class StatusChip extends StatelessWidget {
               Icon(icon, size: 13, color: color),
               const SizedBox(width: 5),
             ],
-            Text(
-              label.toUpperCase(),
-              style: type.panelLabel(size: 9.5).copyWith(color: color),
+            // Chips sit in a Wrap, which offers each one the full row width
+            // and no more — a label long enough to want more than that, at a
+            // large text scale on a narrow phone, used to overflow the chip
+            // rather than give way.
+            Flexible(
+              child: Text(
+                label.toUpperCase(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                semanticsLabel: semanticLabel,
+                style: type.panelLabel(size: 9.5).copyWith(color: color),
+              ),
             ),
           ],
         ),

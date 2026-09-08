@@ -18,6 +18,7 @@ import 'package:electrowave_mobile/features/stats/providers/stats_providers.dart
 import 'package:electrowave_mobile/features/stats/providers/year_review_providers.dart';
 import 'package:electrowave_mobile/features/stats/views/stats_screen.dart';
 import 'package:electrowave_mobile/features/stats/views/year_review_screen.dart';
+import 'package:electrowave_mobile/features/stats/widgets/listening_heatmap.dart';
 import 'package:electrowave_mobile/features/settings/providers/settings_providers.dart';
 import 'package:electrowave_mobile/features/settings/services/settings_persistence.dart';
 import 'package:electrowave_mobile/shared/widgets/deck_nav_bar.dart';
@@ -26,6 +27,7 @@ import 'package:electrowave_mobile/shared/widgets/track_context_menu.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/intl.dart';
 
 /// Overflow regression tests.
 ///
@@ -60,6 +62,10 @@ final _queued = Track(
 );
 
 final _year = DateTime.now().year;
+
+/// The one day in the stubbed year with listening on it, so a test can open
+/// its cell on the calendar.
+final _busyDay = DateTime(_year, 3, 4);
 
 class _StubPlayerController extends PlayerController {
   @override
@@ -185,8 +191,21 @@ Future<void> _pump(
         ),
         yearDailyListeningProvider(_year).overrideWith(
           (ref) => Stream.value([
-            DailyListening(day: DateTime(_year, 3, 4), listenedMs: 3600000),
+            DailyListening(day: _busyDay, listenedMs: 3600000),
             DailyListening(day: DateTime(_year, 3, 5), listenedMs: 1800000),
+          ]),
+        ),
+        dayListenedMsProvider(_busyDay).overrideWith(
+          (ref) => Stream.value(3600000),
+        ),
+        dayPlayCountProvider(_busyDay).overrideWith((ref) => Stream.value(14)),
+        dayDistinctTracksProvider(_busyDay).overrideWith(
+          (ref) => Stream.value(9),
+        ),
+        dayTopTracksProvider(_busyDay).overrideWith(
+          (ref) => Stream.value([
+            TrackListeningStat(track: _track, listenedMs: 3000000),
+            TrackListeningStat(track: _queued, listenedMs: 600000),
           ]),
         ),
         yearListenedMsProvider(_year).overrideWith(
@@ -599,6 +618,72 @@ void main() {
           );
 
           expect(find.textContaining('UP NEXT'), findsOneWidget);
+        });
+      }
+    }
+  });
+
+  group('speed sheet fits', () {
+    for (final entry in _sizes.entries) {
+      for (final scale in const [1.0, 1.3, 2.0]) {
+        testWidgets('${entry.key} at ${scale}x text', (tester) async {
+          await _pump(
+            tester,
+            const NowPlayingScreen(),
+            size: entry.value,
+            textScale: scale,
+          );
+
+          // The chip is always on the player now, whatever the rate is.
+          await tester.tap(find.text('1.5×'));
+          await tester.pumpAndSettle();
+
+          expect(find.text('PLAYBACK SPEED'), findsOneWidget);
+          // Every preset key, so the wrap is pumped at full width.
+          expect(find.text('0.75×'), findsOneWidget);
+          expect(find.text('2×'), findsOneWidget);
+        });
+      }
+    }
+  });
+
+  group('calendar day panel fits', () {
+    for (final entry in _sizes.entries) {
+      for (final scale in const [1.0, 1.3, 2.0]) {
+        testWidgets('${entry.key} at ${scale}x text', (tester) async {
+          await _pump(
+            tester,
+            YearReviewScreen(year: _year),
+            size: entry.value,
+            textScale: scale,
+          );
+
+          // The page scrolls vertically and each grid scrolls horizontally,
+          // so the outer one has to be named.
+          await tester.scrollUntilVisible(
+            find.text('Listening calendar'),
+            200,
+            scrollable: find.byType(Scrollable).first,
+          );
+          await tester.pumpAndSettle();
+
+          // The share card carries a second, untappable copy of the grid, so
+          // the tappable one is the later of the two.
+          final cell = find.descendant(
+            of: find.byType(ListeningHeatmap).last,
+            matching: find.byTooltip(
+              '${DateFormat.yMMMd().format(_busyDay)}\n60 min',
+            ),
+          );
+          await tester.ensureVisible(cell);
+          await tester.pumpAndSettle();
+          await tester.tap(cell, warnIfMissed: false);
+          await tester.pumpAndSettle();
+
+          expect(find.text('PLAYS'), findsOneWidget);
+          expect(find.text('MOST HEARD'), findsOneWidget);
+
+          await _scrollThrough(tester);
         });
       }
     }

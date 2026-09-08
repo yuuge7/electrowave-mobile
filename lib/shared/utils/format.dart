@@ -19,3 +19,14 @@ String formatListeningTime(Duration d) {
   }
   return '${d.inSeconds}s';
 }
+
+/// Playback rate as it is written on a control: "1×", "1.5×", "0.75×".
+///
+/// The stored value is a double, so `'$rate×'` prints "1.0×" and "2.0×" — a
+/// trailing zero on a speed dial reads as precision that isn't there.
+String formatPlaybackRate(double rate) {
+  final text = rate.toStringAsFixed(2);
+  return text.contains('.')
+      ? text.replaceFirst(RegExp(r'\.?0+$'), '')
+      : text;
+}

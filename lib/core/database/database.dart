@@ -792,6 +792,15 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
+  /// How many plays were logged in the window.
+  Stream<int> watchPlayCount({DateTime? from, DateTime? to}) {
+    final plays = playbackHistory.id.count();
+    final query = selectOnly(playbackHistory)
+      ..addColumns([plays])
+      ..where(_playedInRange(from, to));
+    return query.map((row) => row.read(plays) ?? 0).watchSingle();
+  }
+
   /// How many distinct tracks were played in the window.
   Stream<int> watchDistinctTracksPlayed({DateTime? from, DateTime? to}) {
     final distinct = playbackHistory.trackId.count(distinct: true);

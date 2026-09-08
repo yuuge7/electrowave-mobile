@@ -11,6 +11,7 @@ class ListeningHeatmap extends StatelessWidget {
     this.cellSize = 12,
     this.gap = 3,
     this.onDayTap,
+    this.selectedDay,
   });
 
   final int year;
@@ -23,6 +24,10 @@ class ListeningHeatmap extends StatelessWidget {
   /// to fit the card width without scrolling.
   final double gap;
   final ValueChanged<DateTime>? onDayTap;
+
+  /// The day whose figures are open below the grid, ringed so the panel and
+  /// the cell it came from are visibly the same thing.
+  final DateTime? selectedDay;
 
   @override
   Widget build(BuildContext context) {
@@ -62,24 +67,18 @@ class ListeningHeatmap extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               for (var column = 0; column < columns; column++)
-                Padding(
-                  padding: EdgeInsets.only(right: gap),
-                  child: Column(
-                    children: [
-                      for (var row = 0; row < 7; row++)
-                        Padding(
-                          padding: EdgeInsets.only(bottom: gap),
-                          child: _cell(
-                            context,
-                            scheme,
-                            start,
-                            column * 7 + row - leadingBlanks,
-                            dayCount,
-                            peak,
-                          ),
-                        ),
-                    ],
-                  ),
+                Column(
+                  children: [
+                    for (var row = 0; row < 7; row++)
+                      _cell(
+                        context,
+                        scheme,
+                        start,
+                        column * 7 + row - leadingBlanks,
+                        dayCount,
+                        peak,
+                      ),
+                  ],
                 ),
             ],
           ),
@@ -90,6 +89,11 @@ class ListeningHeatmap extends StatelessWidget {
     );
   }
 
+  /// One day, padded on its right and bottom edges.
+  ///
+  /// The gap is inside the cell rather than around it so that the tap target
+  /// covers it too: a 12dp square is not something a thumb can hit, and every
+  /// pixel between the squares is dead space that belongs to one of them.
   Widget _cell(
     BuildContext context,
     ColorScheme scheme,
@@ -100,7 +104,7 @@ class ListeningHeatmap extends StatelessWidget {
   ) {
     // Padding cells before 1 January and after 31 December.
     if (dayIndex < 0 || dayIndex >= dayCount) {
-      return SizedBox(width: cellSize, height: cellSize);
+      return SizedBox(width: cellSize + gap, height: cellSize + gap);
     }
 
     final day = DateTime(start.year, start.month, start.day + dayIndex);
@@ -112,19 +116,41 @@ class ListeningHeatmap extends StatelessWidget {
             scheme.primary,
             peak == 0 ? 0 : (ms / peak).clamp(0.0, 1.0),
           )!;
+    final isSelected =
+        selectedDay != null &&
+        selectedDay!.year == day.year &&
+        selectedDay!.month == day.month &&
+        selectedDay!.day == day.day;
 
-    return Tooltip(
-      message:
-          '${DateFormat.yMMMd().format(day)}\n'
-          '${Duration(milliseconds: ms).inMinutes} min',
-      child: GestureDetector(
-        onTap: onDayTap == null ? null : () => onDayTap!(day),
-        child: Container(
-          width: cellSize,
-          height: cellSize,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(2),
+    final minutes = Duration(milliseconds: ms).inMinutes;
+    final square = Container(
+      width: cellSize,
+      height: cellSize,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(2),
+        border: isSelected
+            ? Border.all(color: scheme.onSurface, width: 2)
+            : null,
+      ),
+    );
+
+    return Semantics(
+      button: onDayTap != null,
+      selected: isSelected,
+      label: '${DateFormat.yMMMd().format(day)}, '
+          '${minutes == 0 ? 'nothing listened' : '$minutes minutes'}',
+      excludeSemantics: true,
+      child: Tooltip(
+        message:
+            '${DateFormat.yMMMd().format(day)}\n'
+            '$minutes min',
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onDayTap == null ? null : () => onDayTap!(day),
+          child: Padding(
+            padding: EdgeInsets.only(right: gap, bottom: gap),
+            child: square,
           ),
         ),
       ),

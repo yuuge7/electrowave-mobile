@@ -115,3 +115,44 @@ final listenedYearsProvider = Provider<List<int>>((ref) {
   final now = DateTime.now().year;
   return [for (var year = now; year >= now - 9; year--) year];
 });
+
+// ---------------------------------------------------------------------------
+// One day out of the calendar
+// ---------------------------------------------------------------------------
+
+/// The day after [day], built from the calendar rather than by adding 24
+/// hours — the two disagree on the days the clocks change, and a heatmap cell
+/// is a calendar day.
+DateTime _dayEnd(DateTime day) => DateTime(day.year, day.month, day.day + 1);
+
+final dayListenedMsProvider = StreamProvider.family<int, DateTime>((ref, day) {
+  return ref
+      .watch(databaseProvider)
+      .watchTotalListenedMs(from: day, to: _dayEnd(day));
+});
+
+final dayPlayCountProvider = StreamProvider.family<int, DateTime>((ref, day) {
+  return ref
+      .watch(databaseProvider)
+      .watchPlayCount(from: day, to: _dayEnd(day));
+});
+
+final dayDistinctTracksProvider = StreamProvider.family<int, DateTime>((
+  ref,
+  day,
+) {
+  return ref
+      .watch(databaseProvider)
+      .watchDistinctTracksPlayed(from: day, to: _dayEnd(day));
+});
+
+final dayTopTracksProvider =
+    StreamProvider.family<List<TrackListeningStat>, DateTime>((ref, day) {
+      return ref
+          .watch(databaseProvider)
+          .watchTracksByListeningTime(
+            from: day,
+            to: _dayEnd(day),
+            limit: 8,
+          );
+    });

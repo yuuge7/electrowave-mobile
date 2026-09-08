@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/database/database.dart';
 import '../../../core/database/database_provider.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/theme/typography.dart' as type;
 import '../../../shared/utils/format.dart';
 import '../../../shared/widgets/app_sheet.dart';
 import '../../../shared/widgets/art_thumb.dart';
@@ -315,16 +316,24 @@ class _ChainStatus extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final chips = <Widget>[
-      if (settings.playbackRate != 1.0)
-        StatusChip(
-          label: '${settings.playbackRate}×',
-          icon: Icons.speed_rounded,
-          tone: StatusTone.signal,
-          onTap: () => showAppSheet<void>(
-            context,
-            builder: (_) => const _SpeedSheet(),
-          ),
+      // Always present, at 1× as much as at 1.75×. Speed is the setting this
+      // player gets reached for most and it used to live three taps away in
+      // Settings; a chip that only appears once you have already changed it
+      // is no way to change it.
+      StatusChip(
+        label: '${formatPlaybackRate(settings.playbackRate)}×',
+        semanticLabel:
+            'Playback speed, ${formatPlaybackRate(settings.playbackRate)} '
+            'times. Change it',
+        icon: Icons.speed_rounded,
+        tone: settings.playbackRate == 1.0
+            ? StatusTone.neutral
+            : StatusTone.signal,
+        onTap: () => showAppSheet<void>(
+          context,
+          builder: (_) => const _SpeedSheet(),
         ),
+      ),
       if (settings.skipSilence)
         const StatusChip(
           label: 'Silence trimmed',
@@ -360,37 +369,177 @@ class _ChainStatus extends ConsumerWidget {
   }
 }
 
-/// Playback speed, offered from the status chip rather than as a permanent
-/// button — it is a setting you change rarely and want to see always.
+/// The speed dial behind the chip.
+///
+/// A dial, not a menu: the rate applies as it changes and the sheet stays
+/// open, so you nudge it against the track you can hear rather than guessing
+/// a value, closing, and coming back. The presets are the jumps; the keys
+/// either side of the readout are the fine adjustment between them.
 class _SpeedSheet extends ConsumerWidget {
   const _SpeedSheet();
 
-  static const List<double> _rates = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+  static const List<double> _presets = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+  static const double _step = 0.05;
+  static const double _min = 0.5;
+  static const double _max = 2.0;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final rate = ref.watch(
       settingsControllerProvider.select((s) => s.playbackRate),
     );
+    final tokens = context.deck;
+    final scheme = Theme.of(context).colorScheme;
+    final normal = rate == 1.0;
+
+    // Rounded through two decimals on the way in: 1.0 - 0.05 is not exactly
+    // 0.95 in binary, and without this the readout drifts to "0.9500000001"
+    // after a few taps.
+    void setRate(double value) {
+      final next = double.parse(
+        value.clamp(_min, _max).toStringAsFixed(2),
+      );
+      if (next == rate) return;
+      HapticFeedback.selectionClick();
+      ref.read(settingsControllerProvider.notifier).setPlaybackRate(next);
+    }
+
     return Column(
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SectionHeader('Playback speed'),
-        for (final value in _rates)
-          ListTile(
-            title: Text(value == 1.0 ? 'Normal (1×)' : '$value×'),
-            trailing: value == rate
-                ? Icon(Icons.check_rounded, color: context.deck.signal)
-                : null,
-            onTap: () {
-              ref
-                  .read(settingsControllerProvider.notifier)
-                  .setPlaybackRate(value);
-              Navigator.pop(context);
-            },
+        SectionHeader(
+          'Playback speed',
+          trailing: normal
+              ? null
+              : TextButton(
+                  onPressed: () => setRate(1),
+                  child: const Text('Reset'),
+                ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 2, 20, 18),
+          child: Row(
+            children: [
+              _StepKey(
+                icon: Icons.remove_rounded,
+                tooltip: 'Slower',
+                onPressed: rate <= _min ? null : () => setRate(rate - _step),
+              ),
+              Expanded(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    '${formatPlaybackRate(rate)}×',
+                    style: type
+                        .counter(44)
+                        .copyWith(
+                          color: normal ? scheme.onSurface : tokens.signal,
+                        ),
+                    semanticsLabel: 'Playback speed '
+                        '${formatPlaybackRate(rate)} times',
+                  ),
+                ),
+              ),
+              _StepKey(
+                icon: Icons.add_rounded,
+                tooltip: 'Faster',
+                onPressed: rate >= _max ? null : () => setRate(rate + _step),
+              ),
+            ],
           ),
-        const SizedBox(height: 8),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final value in _presets)
+                _PresetKey(
+                  value: value,
+                  selected: value == rate,
+                  onTap: () => setRate(value),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
       ],
+    );
+  }
+}
+
+/// One of the two keys either side of the speed readout.
+class _StepKey extends StatelessWidget {
+  const _StepKey({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton.outlined(
+      icon: Icon(icon),
+      iconSize: 22,
+      tooltip: tooltip,
+      onPressed: onPressed,
+    );
+  }
+}
+
+/// A speed you can land on in one tap. Selected keys take the signal colour,
+/// the same way every other live-state marker in the app does.
+class _PresetKey extends StatelessWidget {
+  const _PresetKey({
+    required this.value,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final double value;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.deck;
+    final scheme = Theme.of(context).colorScheme;
+
+    return Semantics(
+      selected: selected,
+      button: true,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: selected
+                  ? tokens.signal.withValues(alpha: 0.6)
+                  : scheme.outline.withValues(alpha: 0.4),
+            ),
+            color: selected
+                ? tokens.signal.withValues(alpha: 0.12)
+                : Colors.transparent,
+          ),
+          child: Text(
+            '${formatPlaybackRate(value)}×',
+            style: type
+                .instrument(12, weight: 500)
+                .copyWith(
+                  color: selected ? tokens.signal : scheme.onSurfaceVariant,
+                ),
+          ),
+        ),
+      ),
     );
   }
 }

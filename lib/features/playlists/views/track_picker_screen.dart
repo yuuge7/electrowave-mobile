@@ -11,6 +11,7 @@ import '../../../shared/utils/format.dart';
 import '../../../shared/widgets/art_thumb.dart';
 import '../../../shared/widgets/deck.dart';
 import '../../../shared/widgets/state_views.dart';
+import '../../player/providers/player_providers.dart';
 import '../providers/playlist_providers.dart';
 
 /// Pick many tracks at once, then commit them to a playlist in one write.
@@ -387,6 +388,9 @@ class _TrackPickerScreenState extends ConsumerState<TrackPickerScreen>
                                   _toggle(visible[index].id, index: index),
                               onExtend: (index) =>
                                   _extendTo(index, visible, existing),
+                              previewContextName: playlistName == null
+                                  ? 'Picking tracks'
+                                  : 'Adding to $playlistName',
                             ),
                             _GroupList(
                               groups: _groupBy(
@@ -520,6 +524,7 @@ class _TrackList extends StatelessWidget {
     required this.existing,
     required this.onTap,
     required this.onExtend,
+    required this.previewContextName,
   });
 
   final List<Track> tracks;
@@ -528,6 +533,10 @@ class _TrackList extends StatelessWidget {
   final void Function(int index) onTap;
   final void Function(int index) onExtend;
 
+  /// What the player calls the context a preview starts, so "Playing from"
+  /// says where the sound came from once you leave the picker.
+  final String previewContextName;
+
   @override
   Widget build(BuildContext context) {
     return ListView.builder(
@@ -535,7 +544,9 @@ class _TrackList extends StatelessWidget {
       itemCount: tracks.length + 1,
       itemBuilder: (context, index) {
         if (index == 0) {
-          return const _PickingHint('Tap to pick · hold to take the run');
+          return const _PickingHint(
+            'Tap to pick · hold for a run · play to hear it',
+          );
         }
         final row = index - 1;
         final track = tracks[row];
@@ -562,7 +573,63 @@ class _TrackList extends StatelessWidget {
                   formatDurationMs(track.durationMs),
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
+          // Deliberately outside the row's own semantics and outside the
+          // dimming a track already in the list gets: hearing a track is
+          // never disabled, including for the ones you cannot pick again.
+          action: _PreviewButton(
+            track: track,
+            contextTracks: tracks,
+            contextName: previewContextName,
+          ),
         );
+      },
+    );
+  }
+}
+
+/// Hear a row before committing to it.
+///
+/// A title and an artist are not enough to know what a track is, and the
+/// answer used to mean leaving the picker — which threw the selection away.
+/// This plays it through the real player, so the picker list becomes the
+/// playback context and the transport keeps working while you carry on
+/// picking.
+class _PreviewButton extends ConsumerWidget {
+  const _PreviewButton({
+    required this.track,
+    required this.contextTracks,
+    required this.contextName,
+  });
+
+  final Track track;
+  final List<Track> contextTracks;
+  final String contextName;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isCurrent = ref.watch(
+      playerControllerProvider.select((s) => s.current?.id == track.id),
+    );
+    final playing =
+        isCurrent && (ref.watch(playingProvider).value ?? false);
+    final tokens = context.deck;
+
+    return IconButton(
+      icon: Icon(
+        playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+      ),
+      iconSize: 22,
+      color: isCurrent
+          ? tokens.signal
+          : Theme.of(context).colorScheme.onSurfaceVariant,
+      tooltip: playing ? 'Pause' : 'Hear ${track.title}',
+      onPressed: () {
+        final controller = ref.read(playerControllerProvider.notifier);
+        if (isCurrent) {
+          controller.togglePlayPause();
+        } else {
+          controller.playFromList(track, contextTracks, contextName);
+        }
       },
     );
   }
@@ -601,6 +668,7 @@ class _PickRow extends StatelessWidget {
     required this.title,
     required this.subtitle,
     this.trailing,
+    this.action,
   });
 
   final bool selected;
@@ -612,6 +680,11 @@ class _PickRow extends StatelessWidget {
   final String title;
   final String subtitle;
   final Widget? trailing;
+
+  /// A control that belongs to the row but is not part of picking it. It sits
+  /// outside the tile so that neither the row's `excludeSemantics` nor the
+  /// dimming of an already-added track reaches it.
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
@@ -638,25 +711,38 @@ class _PickRow extends StatelessWidget {
       ),
     );
 
-    return Semantics(
+    final tile = Semantics(
       checked: selected,
       enabled: !disabled,
       label: semanticLabel,
       hint: disabled ? 'Already in the playlist' : 'Pick for the playlist',
       excludeSemantics: true,
-      child: Stack(
-        children: [
-          row,
-          if (selected)
-            Positioned(
-              left: 0,
-              top: 8,
-              bottom: 8,
-              width: 2,
-              child: ColoredBox(color: signal),
-            ),
-        ],
-      ),
+      child: row,
+    );
+
+    return Stack(
+      children: [
+        if (action == null)
+          tile
+        else
+          Row(
+            children: [
+              Expanded(child: tile),
+              Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: action,
+              ),
+            ],
+          ),
+        if (selected)
+          Positioned(
+            left: 0,
+            top: 8,
+            bottom: 8,
+            width: 2,
+            child: ColoredBox(color: signal),
+          ),
+      ],
     );
   }
 }
