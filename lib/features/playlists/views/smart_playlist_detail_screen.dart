@@ -28,6 +28,21 @@ class SmartPlaylistDetailScreen extends ConsumerWidget {
       appBar: AppBar(
         title: Text(name),
         actions: [
+          if (playlist != null)
+            IconButton(
+              icon: Icon(
+                playlist.pinnedAt != null
+                    ? Icons.push_pin
+                    : Icons.push_pin_outlined,
+              ),
+              tooltip: playlist.pinnedAt != null ? 'Unpin' : 'Pin to top',
+              onPressed: () => ref
+                  .read(databaseProvider)
+                  .setSmartPlaylistPinned(
+                    smartPlaylistId,
+                    pinned: playlist.pinnedAt == null,
+                  ),
+            ),
           tracksAsync.maybeWhen(
             data: (tracks) => tracks.isEmpty
                 ? const SizedBox.shrink()

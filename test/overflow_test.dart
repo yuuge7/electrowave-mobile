@@ -165,6 +165,9 @@ Future<void> _pump(
               name: 'Recently added, unplayed',
               rulesJson: '{"match":"all","rules":[]}',
               createdAt: DateTime(2024, 5, 5),
+              // Pinned, so the Pinned section and the Library shortcut chip
+              // are both pumped at every size.
+              pinnedAt: DateTime(2024, 6, 1),
             ),
           ]),
         ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/database/database.dart';
 import '../../../core/database/database_provider.dart';
 import '../../../shared/widgets/track_context_menu.dart' show promptForText;
 import '../../../core/theme/tokens.dart';
@@ -66,10 +67,101 @@ class PlaylistsScreen extends ConsumerWidget {
     context.push(smart ? '/playlists/smart/new' : '/playlists/new');
   }
 
+  Widget _playlistTile(
+    BuildContext context,
+    WidgetRef ref,
+    PlaylistWithCount entry,
+  ) {
+    final playlist = entry.playlist;
+    final pinned = playlist.pinnedAt != null;
+    return ListTile(
+      leading: GeneratedTile(seed: playlist.name),
+      title: Text(
+        playlist.name,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Text(
+        '${entry.trackCount} track${entry.trackCount == 1 ? '' : 's'}',
+      ),
+      onTap: () => context.go('/playlists/${playlist.id}'),
+      trailing: PopupMenuButton<String>(
+        onSelected: (action) async {
+          final db = ref.read(databaseProvider);
+          switch (action) {
+            case 'add':
+              context.push('/playlists/${playlist.id}/add');
+            case 'rename':
+              final name = await promptForText(
+                context,
+                title: 'Rename playlist',
+                initial: playlist.name,
+              );
+              if (name != null && name.trim().isNotEmpty) {
+                await db.renamePlaylist(playlist.id, name.trim());
+              }
+            case 'pin':
+              await db.setPlaylistPinned(playlist.id, pinned: !pinned);
+            case 'delete':
+              final confirmed = await _confirmDelete(context, playlist.name);
+              if (confirmed) await db.deletePlaylist(playlist.id);
+          }
+        },
+        itemBuilder: (context) => [
+          const PopupMenuItem(value: 'add', child: Text('Add tracks')),
+          const PopupMenuItem(value: 'rename', child: Text('Rename')),
+          PopupMenuItem(
+            value: 'pin',
+            child: Text(pinned ? 'Unpin' : 'Pin to top'),
+          ),
+          const PopupMenuItem(value: 'delete', child: Text('Delete')),
+        ],
+      ),
+    );
+  }
+
+  Widget _smartTile(BuildContext context, WidgetRef ref, SmartPlaylist smart) {
+    final definition = SmartPlaylistDefinition.decode(smart.rulesJson);
+    final pinned = smart.pinnedAt != null;
+    return ListTile(
+      leading: GeneratedTile(seed: smart.name, icon: Icons.auto_awesome),
+      title: Text(smart.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: Text(
+        definition.describe(),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      onTap: () => context.go('/playlists/smart/${smart.id}'),
+      trailing: PopupMenuButton<String>(
+        onSelected: (action) async {
+          final db = ref.read(databaseProvider);
+          switch (action) {
+            case 'edit':
+              context.push('/playlists/smart/${smart.id}/edit');
+            case 'pin':
+              await db.setSmartPlaylistPinned(smart.id, pinned: !pinned);
+            case 'delete':
+              final confirmed = await _confirmDelete(context, smart.name);
+              if (confirmed) await db.deleteSmartPlaylist(smart.id);
+          }
+        },
+        itemBuilder: (context) => [
+          const PopupMenuItem(value: 'edit', child: Text('Edit rules')),
+          PopupMenuItem(
+            value: 'pin',
+            child: Text(pinned ? 'Unpin' : 'Pin to top'),
+          ),
+          const PopupMenuItem(value: 'delete', child: Text('Delete')),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final playlistsAsync = ref.watch(playlistsProvider);
     final smartPlaylists = ref.watch(smartPlaylistsProvider).value ?? const [];
+    final pinned = ref.watch(pinnedPlaylistsProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Playlists')),
@@ -109,128 +201,76 @@ class PlaylistsScreen extends ConsumerWidget {
             );
           }
           // Two kinds of list live here and they behave differently: one you
-          // fill by hand, one the library keeps filled. Concatenating them
-          // into a single run with index arithmetic hid that entirely.
-          const manualHeader = 1;
-          final smartHeader = smartPlaylists.isEmpty ? 0 : 1;
-          final manualCount = playlists.length;
+          // fill by hand, one the library keeps filled. Pinned lists of
+          // either kind are lifted into their own run above both, so each
+          // playlist still appears exactly once.
+          final manual = [
+            for (final entry in playlists)
+              if (entry.playlist.pinnedAt == null) entry,
+          ];
+          final smart = [
+            for (final playlist in smartPlaylists)
+              if (playlist.pinnedAt == null) playlist,
+          ];
+          final rows = <_Row>[
+            if (pinned.isNotEmpty) ...[
+              _HeaderRow('Pinned', pinned.length),
+              for (final item in pinned)
+                switch (item) {
+                  PinnedManualPlaylist(:final entry) => _PlaylistRow(entry),
+                  PinnedSmartPlaylist(:final playlist) => _SmartRow(playlist),
+                },
+            ],
+            if (manual.isNotEmpty) ...[
+              _HeaderRow('Playlists', manual.length),
+              for (final entry in manual) _PlaylistRow(entry),
+            ],
+            if (smart.isNotEmpty) ...[
+              _HeaderRow('Smart lists · kept live', smart.length),
+              for (final playlist in smart) _SmartRow(playlist),
+            ],
+          ];
 
           return ListView.builder(
-            itemCount: manualHeader +
-                manualCount +
-                smartHeader +
-                smartPlaylists.length,
-            itemBuilder: (context, rawIndex) {
-              if (rawIndex == 0) {
-                return SectionHeader(
-                  'Playlists',
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
-                  trailing: PanelLabel('$manualCount'),
-                );
-              }
-              if (rawIndex == manualHeader + manualCount &&
-                  smartPlaylists.isNotEmpty) {
-                return SectionHeader(
-                  'Smart lists · kept live',
-                  trailing: PanelLabel('${smartPlaylists.length}'),
-                );
-              }
-              final index = rawIndex > manualHeader + manualCount
-                  ? rawIndex - manualHeader - smartHeader
-                  : rawIndex - manualHeader;
-              if (index >= playlists.length) {
-                final smart = smartPlaylists[index - playlists.length];
-                final definition = SmartPlaylistDefinition.decode(
-                  smart.rulesJson,
-                );
-                return ListTile(
-                  leading: GeneratedTile(
-                    seed: smart.name,
-                    icon: Icons.auto_awesome,
-                  ),
-                  title: Text(
-                    smart.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text(
-                    definition.describe(),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  onTap: () => context.go('/playlists/smart/${smart.id}'),
-                  trailing: PopupMenuButton<String>(
-                    onSelected: (action) async {
-                      final db = ref.read(databaseProvider);
-                      switch (action) {
-                        case 'edit':
-                          context.push('/playlists/smart/${smart.id}/edit');
-                        case 'delete':
-                          final confirmed = await _confirmDelete(
-                            context,
-                            smart.name,
-                          );
-                          if (confirmed) await db.deleteSmartPlaylist(smart.id);
-                      }
-                    },
-                    itemBuilder: (context) => const [
-                      PopupMenuItem(value: 'edit', child: Text('Edit rules')),
-                      PopupMenuItem(value: 'delete', child: Text('Delete')),
-                    ],
-                  ),
-                );
-              }
-              final entry = playlists[index];
-              return ListTile(
-                leading: GeneratedTile(seed: entry.playlist.name),
-                title: Text(
-                  entry.playlist.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                subtitle: Text(
-                  '${entry.trackCount} track${entry.trackCount == 1 ? '' : 's'}',
-                ),
-                onTap: () => context.go('/playlists/${entry.playlist.id}'),
-                trailing: PopupMenuButton<String>(
-                  onSelected: (action) async {
-                    final db = ref.read(databaseProvider);
-                    switch (action) {
-                      case 'add':
-                        context.push('/playlists/${entry.playlist.id}/add');
-                      case 'rename':
-                        final name = await promptForText(
-                          context,
-                          title: 'Rename playlist',
-                          initial: entry.playlist.name,
-                        );
-                        if (name != null && name.trim().isNotEmpty) {
-                          await db.renamePlaylist(
-                            entry.playlist.id,
-                            name.trim(),
-                          );
-                        }
-                      case 'delete':
-                        final confirmed = await _confirmDelete(
-                          context,
-                          entry.playlist.name,
-                        );
-                        if (confirmed) {
-                          await db.deletePlaylist(entry.playlist.id);
-                        }
-                    }
-                  },
-                  itemBuilder: (context) => const [
-                    PopupMenuItem(value: 'add', child: Text('Add tracks')),
-                    PopupMenuItem(value: 'rename', child: Text('Rename')),
-                    PopupMenuItem(value: 'delete', child: Text('Delete')),
-                  ],
-                ),
-              );
+            itemCount: rows.length,
+            itemBuilder: (context, index) => switch (rows[index]) {
+              _HeaderRow(:final label, :final count) => SectionHeader(
+                label,
+                // The first header sits under the app bar, not another list.
+                padding: index == 0
+                    ? const EdgeInsets.fromLTRB(20, 8, 20, 4)
+                    : const EdgeInsets.fromLTRB(20, 22, 20, 8),
+                trailing: PanelLabel('$count'),
+              ),
+              _PlaylistRow(:final entry) => _playlistTile(context, ref, entry),
+              _SmartRow(:final playlist) => _smartTile(context, ref, playlist),
             },
           );
         },
       ),
     );
   }
+}
+
+sealed class _Row {
+  const _Row();
+}
+
+final class _HeaderRow extends _Row {
+  const _HeaderRow(this.label, this.count);
+
+  final String label;
+  final int count;
+}
+
+final class _PlaylistRow extends _Row {
+  const _PlaylistRow(this.entry);
+
+  final PlaylistWithCount entry;
+}
+
+final class _SmartRow extends _Row {
+  const _SmartRow(this.playlist);
+
+  final SmartPlaylist playlist;
 }

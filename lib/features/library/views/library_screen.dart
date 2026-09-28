@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/database/database.dart';
 import '../../player/providers/player_providers.dart';
+import '../../playlists/providers/playlist_providers.dart';
 import '../../settings/providers/settings_providers.dart';
 import '../../../shared/widgets/state_views.dart';
 import '../../../shared/widgets/track_tile.dart';
@@ -171,7 +172,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
   }
 }
 
-/// Flat track list, with the smart-list shortcuts pinned above it.
+/// Flat track list, with the shortcut row — pinned playlists, then the
+/// built-in smart lists — fixed above it.
 class _TracksTab extends ConsumerWidget {
   const _TracksTab({
     required this.tracksAsync,
@@ -202,7 +204,7 @@ class _TracksTab extends ConsumerWidget {
         }
         return Column(
           children: [
-            const _SmartListsRow(),
+            const _ShortcutsRow(),
             const Divider(height: 1),
             Expanded(
               child: ListView.builder(
@@ -226,17 +228,38 @@ class _TracksTab extends ConsumerWidget {
   }
 }
 
-class _SmartListsRow extends StatelessWidget {
-  const _SmartListsRow();
+class _ShortcutsRow extends ConsumerWidget {
+  const _ShortcutsRow();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final pinned = ref.watch(pinnedPlaylistsProvider);
+
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
         spacing: 8,
         children: [
+          // Pinned first: the built-in chips alone are wider than a phone,
+          // and a list someone chose to pin shouldn't start offscreen.
+          for (final playlist in pinned)
+            ActionChip(
+              avatar: const Icon(Icons.push_pin_outlined, size: 18),
+              label: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 160),
+                child: Text(
+                  playlist.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              // go, not push: the playlist lives in the Playlists tab, and
+              // the nav bar should say so.
+              onPressed: () => context.go(playlist.location),
+            ),
+          if (pinned.isNotEmpty)
+            const SizedBox(height: 24, child: VerticalDivider(width: 1)),
           for (final list in SmartList.values)
             ActionChip(
               avatar: Icon(

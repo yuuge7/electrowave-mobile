@@ -71,6 +71,61 @@ final smartPlaylistPreviewProvider = StreamProvider.family<List<Track>, String>(
 );
 
 // ---------------------------------------------------------------------------
+// Pinned
+// ---------------------------------------------------------------------------
+
+/// A pinned playlist of either kind. Pinning cuts across the manual/smart
+/// split: the pinned run is the lists someone reaches for, whatever fills them.
+sealed class PinnedPlaylist {
+  const PinnedPlaylist();
+
+  String get name;
+  DateTime get pinnedAt;
+
+  /// Where the playlist opens, inside the Playlists tab.
+  String get location;
+}
+
+final class PinnedManualPlaylist extends PinnedPlaylist {
+  const PinnedManualPlaylist(this.entry);
+
+  final PlaylistWithCount entry;
+
+  @override
+  String get name => entry.playlist.name;
+  @override
+  DateTime get pinnedAt => entry.playlist.pinnedAt!;
+  @override
+  String get location => '/playlists/${entry.playlist.id}';
+}
+
+final class PinnedSmartPlaylist extends PinnedPlaylist {
+  const PinnedSmartPlaylist(this.playlist);
+
+  final SmartPlaylist playlist;
+
+  @override
+  String get name => playlist.name;
+  @override
+  DateTime get pinnedAt => playlist.pinnedAt!;
+  @override
+  String get location => '/playlists/smart/${playlist.id}';
+}
+
+/// Both kinds' pinned playlists as one run, oldest pin first, so pinning a
+/// new list adds it at the end rather than reshuffling the ones above.
+final pinnedPlaylistsProvider = Provider<List<PinnedPlaylist>>((ref) {
+  final manual = ref.watch(playlistsProvider).value ?? const [];
+  final smart = ref.watch(smartPlaylistsProvider).value ?? const [];
+  return [
+    for (final entry in manual)
+      if (entry.playlist.pinnedAt != null) PinnedManualPlaylist(entry),
+    for (final playlist in smart)
+      if (playlist.pinnedAt != null) PinnedSmartPlaylist(playlist),
+  ]..sort((a, b) => a.pinnedAt.compareTo(b.pinnedAt));
+});
+
+// ---------------------------------------------------------------------------
 // Track picker
 // ---------------------------------------------------------------------------
 

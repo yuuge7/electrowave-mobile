@@ -25,6 +25,19 @@ class PlaylistDetailScreen extends ConsumerWidget {
       appBar: AppBar(
         title: Text(playlist?.name ?? 'Playlist'),
         actions: [
+          if (playlist != null)
+            IconButton(
+              icon: Icon(
+                playlist.pinnedAt != null
+                    ? Icons.push_pin
+                    : Icons.push_pin_outlined,
+              ),
+              tooltip: playlist.pinnedAt != null ? 'Unpin' : 'Pin to top',
+              onPressed: () => ref.read(databaseProvider).setPlaylistPinned(
+                playlistId,
+                pinned: playlist.pinnedAt == null,
+              ),
+            ),
           IconButton(
             icon: const Icon(Icons.playlist_add),
             tooltip: 'Add tracks',

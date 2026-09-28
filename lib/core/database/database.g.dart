@@ -1500,8 +1500,19 @@ class $PlaylistsTable extends Playlists
     requiredDuringInsert: false,
     defaultValue: currentDateAndTime,
   );
+  static const VerificationMeta _pinnedAtMeta = const VerificationMeta(
+    'pinnedAt',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, name, createdAt];
+  late final GeneratedColumn<DateTime> pinnedAt = GeneratedColumn<DateTime>(
+    'pinned_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, name, createdAt, pinnedAt];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -1531,6 +1542,12 @@ class $PlaylistsTable extends Playlists
         createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
       );
     }
+    if (data.containsKey('pinned_at')) {
+      context.handle(
+        _pinnedAtMeta,
+        pinnedAt.isAcceptableOrUnknown(data['pinned_at']!, _pinnedAtMeta),
+      );
+    }
     return context;
   }
 
@@ -1552,6 +1569,10 @@ class $PlaylistsTable extends Playlists
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      pinnedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}pinned_at'],
+      ),
     );
   }
 
@@ -1565,10 +1586,15 @@ class Playlist extends DataClass implements Insertable<Playlist> {
   final int id;
   final String name;
   final DateTime createdAt;
+
+  /// When the playlist was pinned, or null when it isn't. A timestamp rather
+  /// than a flag so pinned lists keep the order they were pinned in.
+  final DateTime? pinnedAt;
   const Playlist({
     required this.id,
     required this.name,
     required this.createdAt,
+    this.pinnedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1576,6 +1602,9 @@ class Playlist extends DataClass implements Insertable<Playlist> {
     map['id'] = Variable<int>(id);
     map['name'] = Variable<String>(name);
     map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || pinnedAt != null) {
+      map['pinned_at'] = Variable<DateTime>(pinnedAt);
+    }
     return map;
   }
 
@@ -1584,6 +1613,9 @@ class Playlist extends DataClass implements Insertable<Playlist> {
       id: Value(id),
       name: Value(name),
       createdAt: Value(createdAt),
+      pinnedAt: pinnedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(pinnedAt),
     );
   }
 
@@ -1596,6 +1628,7 @@ class Playlist extends DataClass implements Insertable<Playlist> {
       id: serializer.fromJson<int>(json['id']),
       name: serializer.fromJson<String>(json['name']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      pinnedAt: serializer.fromJson<DateTime?>(json['pinnedAt']),
     );
   }
   @override
@@ -1605,19 +1638,27 @@ class Playlist extends DataClass implements Insertable<Playlist> {
       'id': serializer.toJson<int>(id),
       'name': serializer.toJson<String>(name),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'pinnedAt': serializer.toJson<DateTime?>(pinnedAt),
     };
   }
 
-  Playlist copyWith({int? id, String? name, DateTime? createdAt}) => Playlist(
+  Playlist copyWith({
+    int? id,
+    String? name,
+    DateTime? createdAt,
+    Value<DateTime?> pinnedAt = const Value.absent(),
+  }) => Playlist(
     id: id ?? this.id,
     name: name ?? this.name,
     createdAt: createdAt ?? this.createdAt,
+    pinnedAt: pinnedAt.present ? pinnedAt.value : this.pinnedAt,
   );
   Playlist copyWithCompanion(PlaylistsCompanion data) {
     return Playlist(
       id: data.id.present ? data.id.value : this.id,
       name: data.name.present ? data.name.value : this.name,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      pinnedAt: data.pinnedAt.present ? data.pinnedAt.value : this.pinnedAt,
     );
   }
 
@@ -1626,45 +1667,52 @@ class Playlist extends DataClass implements Insertable<Playlist> {
     return (StringBuffer('Playlist(')
           ..write('id: $id, ')
           ..write('name: $name, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('pinnedAt: $pinnedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, name, createdAt);
+  int get hashCode => Object.hash(id, name, createdAt, pinnedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is Playlist &&
           other.id == this.id &&
           other.name == this.name &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.pinnedAt == this.pinnedAt);
 }
 
 class PlaylistsCompanion extends UpdateCompanion<Playlist> {
   final Value<int> id;
   final Value<String> name;
   final Value<DateTime> createdAt;
+  final Value<DateTime?> pinnedAt;
   const PlaylistsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.pinnedAt = const Value.absent(),
   });
   PlaylistsCompanion.insert({
     this.id = const Value.absent(),
     required String name,
     this.createdAt = const Value.absent(),
+    this.pinnedAt = const Value.absent(),
   }) : name = Value(name);
   static Insertable<Playlist> custom({
     Expression<int>? id,
     Expression<String>? name,
     Expression<DateTime>? createdAt,
+    Expression<DateTime>? pinnedAt,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (name != null) 'name': name,
       if (createdAt != null) 'created_at': createdAt,
+      if (pinnedAt != null) 'pinned_at': pinnedAt,
     });
   }
 
@@ -1672,11 +1720,13 @@ class PlaylistsCompanion extends UpdateCompanion<Playlist> {
     Value<int>? id,
     Value<String>? name,
     Value<DateTime>? createdAt,
+    Value<DateTime?>? pinnedAt,
   }) {
     return PlaylistsCompanion(
       id: id ?? this.id,
       name: name ?? this.name,
       createdAt: createdAt ?? this.createdAt,
+      pinnedAt: pinnedAt ?? this.pinnedAt,
     );
   }
 
@@ -1692,6 +1742,9 @@ class PlaylistsCompanion extends UpdateCompanion<Playlist> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (pinnedAt.present) {
+      map['pinned_at'] = Variable<DateTime>(pinnedAt.value);
+    }
     return map;
   }
 
@@ -1700,7 +1753,8 @@ class PlaylistsCompanion extends UpdateCompanion<Playlist> {
     return (StringBuffer('PlaylistsCompanion(')
           ..write('id: $id, ')
           ..write('name: $name, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('pinnedAt: $pinnedAt')
           ..write(')'))
         .toString();
   }
@@ -2031,8 +2085,25 @@ class $SmartPlaylistsTable extends SmartPlaylists
     requiredDuringInsert: false,
     defaultValue: currentDateAndTime,
   );
+  static const VerificationMeta _pinnedAtMeta = const VerificationMeta(
+    'pinnedAt',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, name, rulesJson, createdAt];
+  late final GeneratedColumn<DateTime> pinnedAt = GeneratedColumn<DateTime>(
+    'pinned_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    rulesJson,
+    createdAt,
+    pinnedAt,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -2070,6 +2141,12 @@ class $SmartPlaylistsTable extends SmartPlaylists
         createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
       );
     }
+    if (data.containsKey('pinned_at')) {
+      context.handle(
+        _pinnedAtMeta,
+        pinnedAt.isAcceptableOrUnknown(data['pinned_at']!, _pinnedAtMeta),
+      );
+    }
     return context;
   }
 
@@ -2095,6 +2172,10 @@ class $SmartPlaylistsTable extends SmartPlaylists
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      pinnedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}pinned_at'],
+      ),
     );
   }
 
@@ -2109,11 +2190,15 @@ class SmartPlaylist extends DataClass implements Insertable<SmartPlaylist> {
   final String name;
   final String rulesJson;
   final DateTime createdAt;
+
+  /// Same meaning as [Playlists.pinnedAt]; both kinds share one pinned run.
+  final DateTime? pinnedAt;
   const SmartPlaylist({
     required this.id,
     required this.name,
     required this.rulesJson,
     required this.createdAt,
+    this.pinnedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2122,6 +2207,9 @@ class SmartPlaylist extends DataClass implements Insertable<SmartPlaylist> {
     map['name'] = Variable<String>(name);
     map['rules_json'] = Variable<String>(rulesJson);
     map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || pinnedAt != null) {
+      map['pinned_at'] = Variable<DateTime>(pinnedAt);
+    }
     return map;
   }
 
@@ -2131,6 +2219,9 @@ class SmartPlaylist extends DataClass implements Insertable<SmartPlaylist> {
       name: Value(name),
       rulesJson: Value(rulesJson),
       createdAt: Value(createdAt),
+      pinnedAt: pinnedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(pinnedAt),
     );
   }
 
@@ -2144,6 +2235,7 @@ class SmartPlaylist extends DataClass implements Insertable<SmartPlaylist> {
       name: serializer.fromJson<String>(json['name']),
       rulesJson: serializer.fromJson<String>(json['rulesJson']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      pinnedAt: serializer.fromJson<DateTime?>(json['pinnedAt']),
     );
   }
   @override
@@ -2154,6 +2246,7 @@ class SmartPlaylist extends DataClass implements Insertable<SmartPlaylist> {
       'name': serializer.toJson<String>(name),
       'rulesJson': serializer.toJson<String>(rulesJson),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'pinnedAt': serializer.toJson<DateTime?>(pinnedAt),
     };
   }
 
@@ -2162,11 +2255,13 @@ class SmartPlaylist extends DataClass implements Insertable<SmartPlaylist> {
     String? name,
     String? rulesJson,
     DateTime? createdAt,
+    Value<DateTime?> pinnedAt = const Value.absent(),
   }) => SmartPlaylist(
     id: id ?? this.id,
     name: name ?? this.name,
     rulesJson: rulesJson ?? this.rulesJson,
     createdAt: createdAt ?? this.createdAt,
+    pinnedAt: pinnedAt.present ? pinnedAt.value : this.pinnedAt,
   );
   SmartPlaylist copyWithCompanion(SmartPlaylistsCompanion data) {
     return SmartPlaylist(
@@ -2174,6 +2269,7 @@ class SmartPlaylist extends DataClass implements Insertable<SmartPlaylist> {
       name: data.name.present ? data.name.value : this.name,
       rulesJson: data.rulesJson.present ? data.rulesJson.value : this.rulesJson,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      pinnedAt: data.pinnedAt.present ? data.pinnedAt.value : this.pinnedAt,
     );
   }
 
@@ -2183,13 +2279,14 @@ class SmartPlaylist extends DataClass implements Insertable<SmartPlaylist> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('rulesJson: $rulesJson, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('pinnedAt: $pinnedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, name, rulesJson, createdAt);
+  int get hashCode => Object.hash(id, name, rulesJson, createdAt, pinnedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -2197,7 +2294,8 @@ class SmartPlaylist extends DataClass implements Insertable<SmartPlaylist> {
           other.id == this.id &&
           other.name == this.name &&
           other.rulesJson == this.rulesJson &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.pinnedAt == this.pinnedAt);
 }
 
 class SmartPlaylistsCompanion extends UpdateCompanion<SmartPlaylist> {
@@ -2205,17 +2303,20 @@ class SmartPlaylistsCompanion extends UpdateCompanion<SmartPlaylist> {
   final Value<String> name;
   final Value<String> rulesJson;
   final Value<DateTime> createdAt;
+  final Value<DateTime?> pinnedAt;
   const SmartPlaylistsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
     this.rulesJson = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.pinnedAt = const Value.absent(),
   });
   SmartPlaylistsCompanion.insert({
     this.id = const Value.absent(),
     required String name,
     required String rulesJson,
     this.createdAt = const Value.absent(),
+    this.pinnedAt = const Value.absent(),
   }) : name = Value(name),
        rulesJson = Value(rulesJson);
   static Insertable<SmartPlaylist> custom({
@@ -2223,12 +2324,14 @@ class SmartPlaylistsCompanion extends UpdateCompanion<SmartPlaylist> {
     Expression<String>? name,
     Expression<String>? rulesJson,
     Expression<DateTime>? createdAt,
+    Expression<DateTime>? pinnedAt,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (name != null) 'name': name,
       if (rulesJson != null) 'rules_json': rulesJson,
       if (createdAt != null) 'created_at': createdAt,
+      if (pinnedAt != null) 'pinned_at': pinnedAt,
     });
   }
 
@@ -2237,12 +2340,14 @@ class SmartPlaylistsCompanion extends UpdateCompanion<SmartPlaylist> {
     Value<String>? name,
     Value<String>? rulesJson,
     Value<DateTime>? createdAt,
+    Value<DateTime?>? pinnedAt,
   }) {
     return SmartPlaylistsCompanion(
       id: id ?? this.id,
       name: name ?? this.name,
       rulesJson: rulesJson ?? this.rulesJson,
       createdAt: createdAt ?? this.createdAt,
+      pinnedAt: pinnedAt ?? this.pinnedAt,
     );
   }
 
@@ -2261,6 +2366,9 @@ class SmartPlaylistsCompanion extends UpdateCompanion<SmartPlaylist> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (pinnedAt.present) {
+      map['pinned_at'] = Variable<DateTime>(pinnedAt.value);
+    }
     return map;
   }
 
@@ -2270,7 +2378,8 @@ class SmartPlaylistsCompanion extends UpdateCompanion<SmartPlaylist> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('rulesJson: $rulesJson, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('pinnedAt: $pinnedAt')
           ..write(')'))
         .toString();
   }
@@ -3625,12 +3734,14 @@ typedef $$PlaylistsTableCreateCompanionBuilder =
       Value<int> id,
       required String name,
       Value<DateTime> createdAt,
+      Value<DateTime?> pinnedAt,
     });
 typedef $$PlaylistsTableUpdateCompanionBuilder =
     PlaylistsCompanion Function({
       Value<int> id,
       Value<String> name,
       Value<DateTime> createdAt,
+      Value<DateTime?> pinnedAt,
     });
 
 final class $$PlaylistsTableReferences
@@ -3677,6 +3788,11 @@ class $$PlaylistsTableFilterComposer
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get pinnedAt => $composableBuilder(
+    column: $table.pinnedAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3729,6 +3845,11 @@ class $$PlaylistsTableOrderingComposer
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<DateTime> get pinnedAt => $composableBuilder(
+    column: $table.pinnedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$PlaylistsTableAnnotationComposer
@@ -3748,6 +3869,9 @@ class $$PlaylistsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get pinnedAt =>
+      $composableBuilder(column: $table.pinnedAt, builder: (column) => column);
 
   Expression<T> playlistTracksRefs<T extends Object>(
     Expression<T> Function($$PlaylistTracksTableAnnotationComposer a) f,
@@ -3806,17 +3930,24 @@ class $$PlaylistsTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<String> name = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
-              }) =>
-                  PlaylistsCompanion(id: id, name: name, createdAt: createdAt),
+                Value<DateTime?> pinnedAt = const Value.absent(),
+              }) => PlaylistsCompanion(
+                id: id,
+                name: name,
+                createdAt: createdAt,
+                pinnedAt: pinnedAt,
+              ),
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
                 required String name,
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime?> pinnedAt = const Value.absent(),
               }) => PlaylistsCompanion.insert(
                 id: id,
                 name: name,
                 createdAt: createdAt,
+                pinnedAt: pinnedAt,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -4255,6 +4386,7 @@ typedef $$SmartPlaylistsTableCreateCompanionBuilder =
       required String name,
       required String rulesJson,
       Value<DateTime> createdAt,
+      Value<DateTime?> pinnedAt,
     });
 typedef $$SmartPlaylistsTableUpdateCompanionBuilder =
     SmartPlaylistsCompanion Function({
@@ -4262,6 +4394,7 @@ typedef $$SmartPlaylistsTableUpdateCompanionBuilder =
       Value<String> name,
       Value<String> rulesJson,
       Value<DateTime> createdAt,
+      Value<DateTime?> pinnedAt,
     });
 
 class $$SmartPlaylistsTableFilterComposer
@@ -4290,6 +4423,11 @@ class $$SmartPlaylistsTableFilterComposer
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get pinnedAt => $composableBuilder(
+    column: $table.pinnedAt,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -4322,6 +4460,11 @@ class $$SmartPlaylistsTableOrderingComposer
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<DateTime> get pinnedAt => $composableBuilder(
+    column: $table.pinnedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$SmartPlaylistsTableAnnotationComposer
@@ -4344,6 +4487,9 @@ class $$SmartPlaylistsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get pinnedAt =>
+      $composableBuilder(column: $table.pinnedAt, builder: (column) => column);
 }
 
 class $$SmartPlaylistsTableTableManager
@@ -4383,11 +4529,13 @@ class $$SmartPlaylistsTableTableManager
                 Value<String> name = const Value.absent(),
                 Value<String> rulesJson = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime?> pinnedAt = const Value.absent(),
               }) => SmartPlaylistsCompanion(
                 id: id,
                 name: name,
                 rulesJson: rulesJson,
                 createdAt: createdAt,
+                pinnedAt: pinnedAt,
               ),
           createCompanionCallback:
               ({
@@ -4395,11 +4543,13 @@ class $$SmartPlaylistsTableTableManager
                 required String name,
                 required String rulesJson,
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime?> pinnedAt = const Value.absent(),
               }) => SmartPlaylistsCompanion.insert(
                 id: id,
                 name: name,
                 rulesJson: rulesJson,
                 createdAt: createdAt,
+                pinnedAt: pinnedAt,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

@@ -56,6 +56,10 @@ class Playlists extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get name => text()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  /// When the playlist was pinned, or null when it isn't. A timestamp rather
+  /// than a flag so pinned lists keep the order they were pinned in.
+  DateTimeColumn get pinnedAt => dateTime().nullable()();
 }
 
 /// A saved query rather than a track list — see
@@ -66,6 +70,9 @@ class SmartPlaylists extends Table {
   TextColumn get name => text()();
   TextColumn get rulesJson => text()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  /// Same meaning as [Playlists.pinnedAt]; both kinds share one pinned run.
+  DateTimeColumn get pinnedAt => dateTime().nullable()();
 }
 
 class PlaylistTracks extends Table {
@@ -202,7 +209,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -220,6 +227,14 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 4) {
         await m.createTable(smartPlaylists);
+      }
+      if (from < 5) {
+        await m.addColumn(playlists, playlists.pinnedAt);
+        // Coming from before 4, createTable above already built the smart
+        // playlists table from the current definition, pin column included.
+        if (from >= 4) {
+          await m.addColumn(smartPlaylists, smartPlaylists.pinnedAt);
+        }
       }
     },
   );
@@ -872,6 +887,13 @@ class AppDatabase extends _$AppDatabase {
         PlaylistsCompanion(name: Value(name)),
       );
 
+  /// Pinning stamps the time, so a list pinned later sits after the ones
+  /// already pinned instead of reshuffling them.
+  Future<void> setPlaylistPinned(int id, {required bool pinned}) =>
+      (update(playlists)..where((pl) => pl.id.equals(id))).write(
+        PlaylistsCompanion(pinnedAt: Value(pinned ? DateTime.now() : null)),
+      );
+
   Future<void> deletePlaylist(int id) async {
     await transaction(() async {
       await (delete(
@@ -1025,6 +1047,13 @@ class AppDatabase extends _$AppDatabase {
   Future<void> updateSmartPlaylist(int id, String name, String rulesJson) =>
       (update(smartPlaylists)..where((sp) => sp.id.equals(id))).write(
         SmartPlaylistsCompanion(name: Value(name), rulesJson: Value(rulesJson)),
+      );
+
+  Future<void> setSmartPlaylistPinned(int id, {required bool pinned}) =>
+      (update(smartPlaylists)..where((sp) => sp.id.equals(id))).write(
+        SmartPlaylistsCompanion(
+          pinnedAt: Value(pinned ? DateTime.now() : null),
+        ),
       );
 
   Future<void> deleteSmartPlaylist(int id) =>
