@@ -146,7 +146,7 @@ class LibraryScanner {
             : fallbackTitle,
         artist: (meta.artist?.trim().isNotEmpty ?? false)
             ? meta.artist!.trim()
-            : 'Unknown artist',
+            : kUnknownArtist,
         album: (meta.album?.trim().isNotEmpty ?? false)
             ? meta.album!.trim()
             : 'Unknown album',

@@ -188,6 +188,9 @@ class PlaylistWithCount {
 
 const String kDatabaseFileName = 'electrowave.db';
 
+/// What the scanner and the tag editor store for a track with no artist.
+const String kUnknownArtist = 'Unknown artist';
+
 Future<File> databaseFile() async {
   final dir = await getApplicationDocumentsDirectory();
   return File(p.join(dir.path, kDatabaseFileName));
@@ -308,25 +311,48 @@ class AppDatabase extends _$AppDatabase {
   Future<Track?> trackByPath(String path) =>
       (select(tracks)..where((t) => t.filePath.equals(path))).getSingleOrNull();
 
-  /// Insert a scanned track, or revive/update the row if the path is already
-  /// known (including soft-deleted rows, so play history is preserved).
-  Future<int> upsertScannedTrack(TracksCompanion entry) async {
-    final existing = await trackByPath(entry.filePath.value);
-    if (existing == null) {
-      return into(tracks).insert(entry);
-    }
-    await (update(tracks)..where((t) => t.id.equals(existing.id))).write(
-      TracksCompanion(
-        title: entry.title,
-        artist: entry.artist,
-        album: entry.album,
-        durationMs: entry.durationMs,
-        genre: entry.genre,
-        albumArtPath: entry.albumArtPath,
-        isDeleted: const Value(false),
-      ),
-    );
-    return existing.id;
+  /// Insert a scanned track, or revive/update the row it already has
+  /// (including soft-deleted rows, so play history is preserved).
+  ///
+  /// The row is looked up by path first and by song second — see [_sameSong].
+  /// A renamed file arrives under a path the library has never seen, and
+  /// matching it to its old row is what keeps its plays and playlists.
+  Future<int> upsertScannedTrack(TracksCompanion entry) {
+    return transaction(() async {
+      final byPath = await trackByPath(entry.filePath.value);
+      final twins = await _sameSong(
+        entry.title.value,
+        entry.artist.value,
+        exceptId: byPath?.id,
+      );
+      if (byPath == null && twins.isEmpty) {
+        return into(tracks).insert(entry);
+      }
+
+      final keeper = byPath ?? twins.first;
+      // A second copy sitting next to a file the row can still play changes
+      // nothing; the scanned path only takes over once the old one is gone.
+      final adopt = byPath != null || !await File(keeper.filePath).exists();
+      await (update(tracks)..where((t) => t.id.equals(keeper.id))).write(
+        adopt
+            ? TracksCompanion(
+                filePath: entry.filePath,
+                title: entry.title,
+                artist: entry.artist,
+                album: entry.album,
+                durationMs: entry.durationMs,
+                genre: entry.genre,
+                albumArtPath: entry.albumArtPath,
+                isDeleted: const Value(false),
+              )
+            : const TracksCompanion(isDeleted: Value(false)),
+      );
+
+      for (final twin in byPath == null ? twins.skip(1) : twins) {
+        await _foldTrack(twin, into: keeper.id);
+      }
+      return keeper.id;
+    });
   }
 
   /// Backfill duration for formats where tag reading couldn't provide one
@@ -353,17 +379,123 @@ class AppDatabase extends _$AppDatabase {
     Value<int?> discNumber = const Value.absent(),
     Value<int?> year = const Value.absent(),
   }) {
-    return (update(tracks)..where((t) => t.id.equals(trackId))).write(
-      TracksCompanion(
-        title: title,
-        artist: artist,
-        album: album,
-        genre: genre,
-        trackNumber: trackNumber,
-        discNumber: discNumber,
-        year: year,
-      ),
-    );
+    return transaction(() async {
+      await (update(tracks)..where((t) => t.id.equals(trackId))).write(
+        TracksCompanion(
+          title: title,
+          artist: artist,
+          album: album,
+          genre: genre,
+          trackNumber: trackNumber,
+          discNumber: discNumber,
+          year: year,
+        ),
+      );
+
+      // Retagging can turn a row into a song the library already holds — how
+      // a renamed file with no tags of its own meets its old entry.
+      final edited = await trackById(trackId);
+      if (edited == null) return;
+      final twins = await _sameSong(
+        edited.title,
+        edited.artist,
+        exceptId: trackId,
+      );
+      for (final twin in twins) {
+        await _foldTrack(twin, into: trackId);
+      }
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Song identity
+  // -------------------------------------------------------------------------
+  //
+  // A path identifies a file, not a song: rename the file and the same song
+  // turns up under a path nobody has seen. Title + artist is what survives
+  // that, so rows agreeing on both are one song and get folded together.
+
+  /// Rows holding the song [title] by [artist], oldest first.
+  ///
+  /// A missing artist tag is not an artist: two untagged files both called
+  /// "Intro" share a filename and nothing else, so the placeholder never
+  /// matches.
+  Future<List<Track>> _sameSong(
+    String title,
+    String artist, {
+    int? exceptId,
+  }) async {
+    if (artist == kUnknownArtist) return const [];
+    final query = select(tracks)
+      ..where(
+        (t) =>
+            t.title.collate(Collate.noCase).equals(title) &
+            t.artist.collate(Collate.noCase).equals(artist),
+      )
+      ..orderBy([(t) => OrderingTerm.asc(t.id)]);
+    if (exceptId != null) {
+      query.where((t) => t.id.equals(exceptId).not());
+    }
+    return query.get();
+  }
+
+  /// Fold [from] into the row [into]: its plays, listening time, playlist
+  /// slots and favorite carry over, then the row is dropped. Does not touch
+  /// the audio file on disk.
+  Future<void> _foldTrack(Track from, {required int into}) {
+    return transaction(() async {
+      // A playlist holding both keeps the slot it already has; OR IGNORE
+      // leaves the other one behind for the delete below.
+      await customUpdate(
+        'UPDATE OR IGNORE playlist_tracks SET track_id = ? WHERE track_id = ?',
+        variables: [Variable.withInt(into), Variable.withInt(from.id)],
+        updates: {playlistTracks},
+        updateKind: UpdateKind.update,
+      );
+      await (delete(
+        playlistTracks,
+      )..where((pt) => pt.trackId.equals(from.id))).go();
+      await (update(playbackHistory)..where((h) => h.trackId.equals(from.id)))
+          .write(PlaybackHistoryCompanion(trackId: Value(into)));
+      await (update(listeningSessions)
+            ..where((s) => s.trackId.equals(from.id)))
+          .write(ListeningSessionsCompanion(trackId: Value(into)));
+      // Gone before the write below, which may hand its path on — paths are
+      // unique.
+      await (delete(tracks)..where((t) => t.id.equals(from.id))).go();
+
+      final kept = await trackById(into);
+      if (kept == null) return;
+      // Whichever of the two still has a file on disk supplies the path.
+      final takeFile =
+          !await File(kept.filePath).exists() &&
+          await File(from.filePath).exists();
+      final lastPlayed =
+          kept.lastPlayed == null ||
+              (from.lastPlayed?.isAfter(kept.lastPlayed!) ?? false)
+          ? from.lastPlayed
+          : kept.lastPlayed;
+
+      await (update(tracks)..where((t) => t.id.equals(into))).write(
+        TracksCompanion(
+          filePath: takeFile ? Value(from.filePath) : const Value.absent(),
+          durationMs: takeFile ? Value(from.durationMs) : const Value.absent(),
+          genre: Value(kept.genre ?? from.genre),
+          albumArtPath: Value(kept.albumArtPath ?? from.albumArtPath),
+          trackNumber: Value(kept.trackNumber ?? from.trackNumber),
+          discNumber: Value(kept.discNumber ?? from.discNumber),
+          year: Value(kept.year ?? from.year),
+          dateAdded: Value(
+            from.dateAdded.isBefore(kept.dateAdded)
+                ? from.dateAdded
+                : kept.dateAdded,
+          ),
+          totalPlayCount: Value(kept.totalPlayCount + from.totalPlayCount),
+          lastPlayed: Value(lastPlayed),
+          isFavorite: Value(kept.isFavorite || from.isFavorite),
+        ),
+      );
+    });
   }
 
   // -------------------------------------------------------------------------

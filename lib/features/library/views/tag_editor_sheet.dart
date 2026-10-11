@@ -66,7 +66,7 @@ class _TagEditorDialogState extends ConsumerState<_TagEditorDialog> {
     final edit = TagEdit(
       title: _title.text.trim(),
       artist: _artist.text.trim().isEmpty
-          ? 'Unknown artist'
+          ? kUnknownArtist
           : _artist.text.trim(),
       album:
           _album.text.trim().isEmpty ? 'Unknown album' : _album.text.trim(),
