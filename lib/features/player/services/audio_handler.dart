@@ -254,12 +254,29 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
   /// clicks on anything with low-frequency content.
   Future<void> _resumePlayback() async {
     await activateSession();
+    // mpv runs with keep-open: a file left at its very end stays parked
+    // there, and unpausing it plays nothing. Start the track over instead.
+    if (await _parkedAtEnd()) await _player.seek(Duration.zero);
     if (_fadeOnPause) {
       await _player.setVolume(0);
       await _player.play();
       await _ramp(from: 0, to: _userVolume);
     } else {
       await _player.play();
+    }
+  }
+
+  /// True when mpv sits at end-of-file without media_kit having reported
+  /// completion — e.g. a seek to the end while paused. (A reported completion
+  /// is already handled by `Player.play`.)
+  Future<bool> _parkedAtEnd() async {
+    if (_player.state.completed) return false;
+    final native = _native;
+    if (native == null) return false;
+    try {
+      return await native.getProperty('eof-reached') == 'yes';
+    } catch (_) {
+      return false;
     }
   }
 

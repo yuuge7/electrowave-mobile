@@ -20,11 +20,18 @@ import io.flutter.plugin.common.MethodChannel
  * check still answers "granted". Neither state is reachable from
  * permission_handler, so it is read here and linked straight to the system
  * page that fixes it.
+ *
+ * Also hosts [MediaWriteAccess] (tag editing on files the app doesn't own),
+ * whose consent dialogs report back through [onActivityResult].
  */
 class MainActivity : AudioServiceActivity() {
 
+    private val mediaWrite by lazy { MediaWriteAccess(this) }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, MEDIA_WRITE_CHANNEL)
+            .setMethodCallHandler(mediaWrite)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -36,6 +43,13 @@ class MainActivity : AudioServiceActivity() {
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    @Deprecated("Still the only hook for startIntentSenderForResult results")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (mediaWrite.onActivityResult(requestCode, resultCode)) return
+        @Suppress("DEPRECATION")
+        super.onActivityResult(requestCode, resultCode, data)
     }
 
     private fun notificationStatus(): Map<String, Any> {
@@ -92,6 +106,7 @@ class MainActivity : AudioServiceActivity() {
 
     private companion object {
         const val CHANNEL = "electrowave/notifications"
+        const val MEDIA_WRITE_CHANNEL = "electrowave/media_write"
 
         /** Must match `androidNotificationChannelId` in `main.dart`. */
         const val PLAYBACK_CHANNEL_ID = "com.example.electrowave.playback"

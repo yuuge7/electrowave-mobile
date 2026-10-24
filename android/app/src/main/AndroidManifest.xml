@@ -9,6 +9,13 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32"/>
+    <!-- Tag editing on Android 9 and older, where files are written directly.
+         Android 10+ asks per file through MediaStore instead
+         (MediaWriteAccess.kt). Deliberately no requestLegacyExternalStorage:
+         adding it to an installed app counts as widening its storage scope,
+         and Android revokes READ_MEDIA_AUDIO on that update. -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28"/>
     <!-- Background playback -->
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>

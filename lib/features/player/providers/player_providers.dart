@@ -207,12 +207,14 @@ class PlayerController extends Notifier<PlayerQueueState> {
 
   Future<void> seek(Duration position) => _handler.seek(position);
 
-  /// Advance. [auto] is true when triggered by track completion.
-  Future<void> next({bool auto = false}) async {
+  /// Advance. [auto] is true when triggered by track completion; [play]
+  /// false loads the next track paused (the sleep timer moving the queue on
+  /// before closing the app).
+  Future<void> next({bool auto = false, bool play = true}) async {
     final s = state;
 
     if (auto && s.repeat == RepeatMode.one) {
-      if (s.current != null) await _loadAndPlay(s.current!);
+      if (s.current != null) await _loadAndPlay(s.current!, play: play);
       return;
     }
 
@@ -223,7 +225,7 @@ class PlayerController extends Notifier<PlayerQueueState> {
         manualQueue: s.manualQueue.sublist(1),
         fromManualQueue: true,
       );
-      await _loadAndPlay(track);
+      await _loadAndPlay(track, play: play);
       return;
     }
 
@@ -238,7 +240,7 @@ class PlayerController extends Notifier<PlayerQueueState> {
       return;
     }
     state = state.copyWith(contextIndex: nextIndex, fromManualQueue: false);
-    await _loadAndPlay(state.context[nextIndex]);
+    await _loadAndPlay(state.context[nextIndex], play: play);
   }
 
   Future<void> previous() async {
@@ -424,11 +426,16 @@ class PlayerController extends Notifier<PlayerQueueState> {
     await _handler.loadTrack(current, autoPlay: false);
     final target = Duration(milliseconds: saved.positionMs);
     if (target > Duration.zero) {
-      // Seek once the media is actually loaded.
-      _handler.player.stream.duration
-          .firstWhere((d) => d > Duration.zero)
-          .then((_) => _handler.seek(target))
-          .ignore();
+      // Seek once the media is actually loaded. A position at the very end
+      // (the app closed as the track finished) would park mpv at
+      // end-of-file, where play does nothing — start the track over instead.
+      _handler.player.stream.duration.firstWhere((d) => d > Duration.zero).then(
+        (duration) async {
+          if (target < duration - const Duration(seconds: 1)) {
+            await _handler.seek(target);
+          }
+        },
+      ).ignore();
     }
   }
 
@@ -436,7 +443,7 @@ class PlayerController extends Notifier<PlayerQueueState> {
   // Internals
   // ---------------------------------------------------------------------
 
-  Future<void> _loadAndPlay(Track track) async {
+  Future<void> _loadAndPlay(Track track, {bool play = true}) async {
     if (!await trackFileExists(track)) {
       ref.read(playerMessageProvider.notifier).state =
           'File missing: ${track.title} — skipped';
@@ -445,7 +452,7 @@ class PlayerController extends Notifier<PlayerQueueState> {
           state.manualQueue.isNotEmpty ||
           _nextContextIndex(state, wrap: false) != null;
       if (anyLeft) {
-        await next();
+        await next(play: play);
       }
       return;
     }
@@ -454,15 +461,19 @@ class PlayerController extends Notifier<PlayerQueueState> {
     // so its time is booked against the right track.
     await _resetListening();
     state = state.copyWith(current: track);
-    await _handler.loadTrack(track);
+    await _handler.loadTrack(track, autoPlay: play);
     unawaited(_saveState());
     unawaited(_widgets.update(track: track, playing: _handler.playing));
   }
 
   Future<void> _handleCompletion() async {
-    // Sleep timer "end of current track" mode: stop here.
+    // Sleep timer "end of current track" mode: stop here. The track is
+    // over, so the queue still moves on — loaded paused — and the next launch
+    // resumes at the following track instead of parked at the end of this
+    // one.
     final sleepTimer = ref.read(sleepTimerProvider);
     if (sleepTimer != null && sleepTimer.endOfTrack) {
+      await next(auto: true, play: false);
       await ref.read(sleepTimerProvider.notifier).fireNow();
       return;
     }
