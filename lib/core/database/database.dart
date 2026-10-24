@@ -175,6 +175,73 @@ class TopArtistStat {
   final int totalMs;
 }
 
+/// One library track with its all-time figures, for the "every track" list.
+/// Plays come from [Track.totalPlayCount], which [AppDatabase.recordPlay]
+/// keeps in step with the history rows.
+class TrackTotals {
+  const TrackTotals({required this.track, required this.listenedMs});
+
+  final Track track;
+  final int listenedMs;
+
+  int get plays => track.totalPlayCount;
+  bool get untouched => plays == 0 && listenedMs == 0;
+}
+
+/// Everything the history tables hold about one track, all time.
+class TrackStats {
+  const TrackStats({
+    required this.plays,
+    required this.starts,
+    required this.listenedMs,
+    this.firstPlayed,
+    this.lastPlayed,
+    this.firstHeard,
+    this.lastHeard,
+    this.playRank,
+  });
+
+  static const empty = TrackStats(plays: 0, starts: 0, listenedMs: 0);
+
+  /// Rows in [PlaybackHistory]: times it crossed the play threshold.
+  final int plays;
+
+  /// Rows in [ListeningSessions]: times it was loaded and actually heard,
+  /// whether or not that went on to book a play.
+  final int starts;
+  final int listenedMs;
+  final DateTime? firstPlayed;
+  final DateTime? lastPlayed;
+  final DateTime? firstHeard;
+  final DateTime? lastHeard;
+
+  /// Position among library tracks by plays, ties sharing a place. Null when
+  /// the track has never been played.
+  final int? playRank;
+
+  bool get untouched => plays == 0 && starts == 0;
+
+  /// The earliest either table has seen the track. Listening sessions began
+  /// at schema 3, so older plays can predate the first session.
+  DateTime? get firstSeen => _pick(firstPlayed, firstHeard, earliest: true);
+  DateTime? get lastSeen => _pick(lastPlayed, lastHeard, earliest: false);
+
+  static DateTime? _pick(DateTime? a, DateTime? b, {required bool earliest}) {
+    if (a == null) return b;
+    if (b == null) return a;
+    return (a.isBefore(b) == earliest) ? a : b;
+  }
+}
+
+/// One calendar month's measured listening for a track.
+class MonthlyListening {
+  const MonthlyListening({required this.month, required this.listenedMs});
+
+  /// Local midnight on the first of the month.
+  final DateTime month;
+  final int listenedMs;
+}
+
 class PlaylistWithCount {
   const PlaylistWithCount({required this.playlist, required this.trackCount});
 
@@ -980,6 +1047,132 @@ class AppDatabase extends _$AppDatabase {
           ),
         )
         .watch();
+  }
+
+  // -------------------------------------------------------------------------
+  // Per-track stats
+  // -------------------------------------------------------------------------
+
+  /// Every library track with its measured listening, unplayed ones included.
+  /// The list screen sorts and filters in Dart, so one stream serves every
+  /// sort order and keystroke.
+  Stream<List<TrackTotals>> watchTrackTotals() {
+    final listened = listeningSessions.listenedMs.sum();
+    final query =
+        select(tracks).join([
+            leftOuterJoin(
+              listeningSessions,
+              listeningSessions.trackId.equalsExp(tracks.id),
+              useColumns: false,
+            ),
+          ])
+          ..addColumns([listened])
+          ..where(tracks.isDeleted.equals(false))
+          ..groupBy([tracks.id]);
+    return query
+        .map(
+          (row) => TrackTotals(
+            track: row.readTable(tracks),
+            listenedMs: row.read(listened) ?? 0,
+          ),
+        )
+        .watch();
+  }
+
+  /// One track's whole record, in a single statement so the figures on the
+  /// page always come from the same moment.
+  ///
+  /// The rank counts library tracks with strictly more plays, so tied tracks
+  /// share a place. Soft-deleted rows are left out of it: they are not in the
+  /// library the rank is a position in.
+  Stream<TrackStats> watchTrackStats(int trackId) {
+    return customSelect(
+      'SELECT '
+      '(SELECT COUNT(*) FROM playback_history WHERE track_id = ?1) AS plays, '
+      '(SELECT MIN(played_at) FROM playback_history WHERE track_id = ?1) '
+      'AS first_played, '
+      '(SELECT MAX(played_at) FROM playback_history WHERE track_id = ?1) '
+      'AS last_played, '
+      '(SELECT COUNT(*) FROM listening_sessions WHERE track_id = ?1) '
+      'AS starts, '
+      '(SELECT COALESCE(SUM(listened_ms), 0) FROM listening_sessions '
+      'WHERE track_id = ?1) AS listened, '
+      '(SELECT MIN(started_at) FROM listening_sessions WHERE track_id = ?1) '
+      'AS first_heard, '
+      '(SELECT MAX(started_at) FROM listening_sessions WHERE track_id = ?1) '
+      'AS last_heard, '
+      '(SELECT COUNT(*) FROM ('
+      'SELECT h.track_id FROM playback_history h '
+      'JOIN tracks t ON t.id = h.track_id WHERE t.is_deleted = 0 '
+      'GROUP BY h.track_id HAVING COUNT(*) > '
+      '(SELECT COUNT(*) FROM playback_history WHERE track_id = ?1)'
+      ')) AS ahead',
+      variables: [Variable.withInt(trackId)],
+      readsFrom: {playbackHistory, listeningSessions, tracks},
+    ).watchSingle().map((row) {
+      final plays = row.read<int>('plays');
+      return TrackStats(
+        plays: plays,
+        starts: row.read<int>('starts'),
+        listenedMs: row.read<int>('listened'),
+        firstPlayed: row.readNullable<DateTime>('first_played'),
+        lastPlayed: row.readNullable<DateTime>('last_played'),
+        firstHeard: row.readNullable<DateTime>('first_heard'),
+        lastHeard: row.readNullable<DateTime>('last_heard'),
+        playRank: plays > 0 ? row.read<int>('ahead') + 1 : null,
+      );
+    });
+  }
+
+  /// One track's listening per calendar month from [from], local time. Months
+  /// with nothing in them are absent.
+  Stream<List<MonthlyListening>> watchTrackMonthlyListening(
+    int trackId, {
+    required DateTime from,
+  }) {
+    return customSelect(
+      "SELECT strftime('%Y-%m', started_at, 'unixepoch', 'localtime') "
+      'AS month, SUM(listened_ms) AS ms FROM listening_sessions '
+      'WHERE track_id = ? AND started_at >= ? GROUP BY month',
+      variables: [
+        Variable.withInt(trackId),
+        Variable.withInt(from.millisecondsSinceEpoch ~/ 1000),
+      ],
+      readsFrom: {listeningSessions},
+    ).watch().map(
+      (rows) => [
+        for (final row in rows)
+          if (_parseMonth(row.read<String>('month')) case final month?)
+            MonthlyListening(
+              month: month,
+              listenedMs: row.read<int?>('ms') ?? 0,
+            ),
+      ],
+    );
+  }
+
+  static DateTime? _parseMonth(String value) {
+    final parts = value.split('-');
+    if (parts.length != 2) return null;
+    final year = int.tryParse(parts[0]);
+    final month = int.tryParse(parts[1]);
+    if (year == null || month == null) return null;
+    return DateTime(year, month);
+  }
+
+  /// The latest stretches of one track that were actually heard, newest first.
+  Stream<List<ListeningSessionEntry>> watchTrackSessions(
+    int trackId, {
+    int limit = 30,
+  }) {
+    final query = select(listeningSessions)
+      ..where((s) => s.trackId.equals(trackId))
+      ..orderBy([
+        (s) => OrderingTerm.desc(s.startedAt),
+        (s) => OrderingTerm.desc(s.id),
+      ])
+      ..limit(limit);
+    return query.watch();
   }
 
   // -------------------------------------------------------------------------

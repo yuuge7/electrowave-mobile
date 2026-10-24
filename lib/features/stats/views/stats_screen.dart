@@ -6,11 +6,11 @@ import 'package:intl/intl.dart';
 import '../../../core/theme/tokens.dart';
 import '../../../core/theme/typography.dart' as type;
 import '../../../shared/utils/format.dart';
-import '../../../shared/widgets/art_thumb.dart';
 import '../../../shared/widgets/deck.dart';
 import '../../../shared/widgets/state_views.dart';
 import '../../player/providers/player_providers.dart';
 import '../providers/stats_providers.dart';
+import '../widgets/stat_rank_row.dart';
 
 /// Listening figures.
 ///
@@ -47,6 +47,11 @@ class StatsScreen extends ConsumerWidget {
         title: const Text('Listening'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.format_list_numbered_rounded),
+            tooltip: 'Every track',
+            onPressed: () => context.push('/stats/tracks'),
+          ),
+          IconButton(
             icon: const Icon(Icons.calendar_view_month_outlined),
             tooltip: 'Year in review',
             onPressed: () => context.push(
@@ -82,10 +87,11 @@ class StatsScreen extends ConsumerWidget {
             const SectionHeader('Most played'),
             _Caption(
               'Ranked by plays. The second figure is what you really heard — '
-              'where they diverge, you have been skipping.',
+              'where they diverge, you have been skipping. Hold a track for '
+              'its full record.',
             ),
             for (final (index, stat) in topTracks.take(10).indexed)
-              _RankRow(
+              StatRankRow(
                 rank: index + 1,
                 title: stat.track.title,
                 subtitle: stat.track.artist,
@@ -108,7 +114,21 @@ class StatsScreen extends ConsumerWidget {
                           [for (final s in topTracks) s.track],
                           'Most played',
                         ),
+                onLongPress: () =>
+                    context.push('/track/${stat.track.id}/stats'),
               ),
+            // Its own row rather than a header action: at a large text scale
+            // a button beside the label pushed past the edge of the header.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  onPressed: () => context.push('/stats/tracks'),
+                  child: const Text('See every track'),
+                ),
+              ),
+            ),
           ],
           if (byListeningTime.isNotEmpty) ...[
             const SectionHeader('Time actually heard'),
@@ -117,7 +137,7 @@ class StatsScreen extends ConsumerWidget {
               'counts as real time: a 1:00 track is 0:40 at 1.5×.',
             ),
             for (final (index, stat) in byListeningTime.take(10).indexed)
-              _RankRow(
+              StatRankRow(
                 rank: index + 1,
                 title: stat.track.title,
                 subtitle: stat.track.artist,
@@ -136,12 +156,14 @@ class StatsScreen extends ConsumerWidget {
                           [for (final s in byListeningTime) s.track],
                           'Time heard',
                         ),
+                onLongPress: () =>
+                    context.push('/track/${stat.track.id}/stats'),
               ),
           ],
           if (topArtists.isNotEmpty) ...[
             const SectionHeader('Most played artists'),
             for (final (index, stat) in topArtists.take(10).indexed)
-              _RankRow(
+              StatRankRow(
                 rank: index + 1,
                 title: stat.artist,
                 subtitle: '${stat.playCount} '
@@ -275,147 +297,6 @@ class _Caption extends StatelessWidget {
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Ranked row
-// ---------------------------------------------------------------------------
-
-/// A ranked row with its value drawn as a bar rather than left as a number to
-/// compare by eye. Ten rows of "12 plays / 9 plays / 7 plays" is a table; the
-/// bar is what makes it a chart.
-class _RankRow extends StatelessWidget {
-  const _RankRow({
-    required this.rank,
-    required this.title,
-    required this.subtitle,
-    required this.seed,
-    required this.value,
-    required this.maxValue,
-    required this.primary,
-    this.artPath,
-    this.secondary,
-    this.onTap,
-  });
-
-  final int rank;
-  final String title;
-  final String subtitle;
-  final String seed;
-  final double value;
-  final double maxValue;
-  final String primary;
-  final String? artPath;
-  final String? secondary;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final tokens = context.deck;
-    final fraction = maxValue > 0 ? (value / maxValue).clamp(0.0, 1.0) : 0.0;
-
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 9, 20, 9),
-        child: Column(
-          children: [
-            LayoutBuilder(
-              builder: (context, constraints) => Row(
-                children: [
-                  SizedBox(
-                    width: 22,
-                    child: Text(
-                      '$rank',
-                      style: type
-                          .instrument(12, weight: 500)
-                          .copyWith(color: scheme.onSurfaceVariant),
-                    ),
-                  ),
-                  if (artPath != null || rank > 0)
-                    ArtThumb(
-                      artPath: artPath,
-                      size: 38,
-                      borderRadius: 6,
-                      seed: seed,
-                    ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                        const SizedBox(height: 1),
-                        Text(
-                          subtitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: scheme.onSurfaceVariant),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  // The figures are numbers and cannot be ellipsized, so at a
-                  // large text scale they crowded the title out of the row and
-                  // then ran past it. Cap them at a third of the row and let
-                  // them shrink to fit that instead.
-                  ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxWidth: constraints.maxWidth / 3,
-                    ),
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerRight,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            primary,
-                            style: type
-                                .instrument(11, weight: 500)
-                                .copyWith(color: scheme.onSurface),
-                          ),
-                          if (secondary != null) ...[
-                            const SizedBox(height: 3),
-                            Text(
-                              secondary!,
-                              style: type
-                                  .instrument(9.5)
-                                  .copyWith(color: tokens.peak),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.only(left: 22),
-              child: SignalRule(
-                value: fraction,
-                height: 3,
-                color: tokens.signalDim,
-                radius: 1.5,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

@@ -10,17 +10,25 @@ import '../../features/playlists/providers/playlist_providers.dart';
 import 'app_sheet.dart';
 import 'art_thumb.dart';
 
-Future<void> showTrackContextMenu(BuildContext context, Track track) {
+/// [showStats] is false on the track's own stats page, where the entry
+/// would only reopen the page underneath.
+Future<void> showTrackContextMenu(
+  BuildContext context,
+  Track track, {
+  bool showStats = true,
+}) {
   return showAppSheet<void>(
     context,
-    builder: (sheetContext) => _TrackMenuSheet(track: track),
+    builder: (sheetContext) =>
+        _TrackMenuSheet(track: track, showStats: showStats),
   );
 }
 
 class _TrackMenuSheet extends ConsumerWidget {
-  const _TrackMenuSheet({required this.track});
+  const _TrackMenuSheet({required this.track, required this.showStats});
 
   final Track track;
+  final bool showStats;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -104,6 +112,15 @@ class _TrackMenuSheet extends ConsumerWidget {
             context.push('/artist/${Uri.encodeComponent(track.artist)}');
           },
         ),
+        if (showStats)
+          ListTile(
+            leading: const Icon(Icons.insights_outlined),
+            title: const Text('Track stats'),
+            onTap: () {
+              Navigator.pop(context);
+              context.push('/track/${track.id}/stats');
+            },
+          ),
         ListTile(
           leading: const Icon(Icons.delete_outline),
           title: const Text('Remove from library'),

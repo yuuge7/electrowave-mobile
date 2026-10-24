@@ -21,7 +21,9 @@ import 'features/playlists/views/track_picker_screen.dart';
 import 'features/settings/providers/settings_providers.dart';
 import 'features/settings/services/settings_persistence.dart';
 import 'features/settings/views/settings_screen.dart';
+import 'features/stats/views/every_track_screen.dart';
 import 'features/stats/views/stats_screen.dart';
+import 'features/stats/views/track_stats_screen.dart';
 import 'features/stats/views/year_review_screen.dart';
 import 'shared/widgets/app_shell.dart';
 
@@ -103,6 +105,10 @@ final GoRouter appRouter = GoRouter(
             builder: (context, state) => const StatsScreen(),
             routes: [
               GoRoute(
+                path: 'tracks',
+                builder: (context, state) => const EveryTrackScreen(),
+              ),
+              GoRoute(
                 path: 'year/:year',
                 builder: (context, state) => YearReviewScreen(
                   year: int.tryParse(state.pathParameters['year'] ?? '') ??
@@ -166,6 +172,14 @@ final GoRouter appRouter = GoRouter(
         );
         return SmartListScreen(list: list);
       },
+    ),
+    // Above the shell, like album pages: it opens from the track menu on
+    // any tab, and would otherwise drag the Stats branch to the front.
+    GoRoute(
+      path: '/track/:id/stats',
+      builder: (context, state) => TrackStatsScreen(
+        trackId: int.tryParse(state.pathParameters['id'] ?? '') ?? -1,
+      ),
     ),
     GoRoute(
       path: '/trash',

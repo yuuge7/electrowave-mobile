@@ -16,7 +16,10 @@ import 'package:electrowave_mobile/features/player/views/sleep_timer_sheet.dart'
 import 'package:electrowave_mobile/features/settings/views/equalizer_screen.dart';
 import 'package:electrowave_mobile/features/stats/providers/stats_providers.dart';
 import 'package:electrowave_mobile/features/stats/providers/year_review_providers.dart';
+import 'package:electrowave_mobile/features/stats/providers/track_stats_providers.dart';
+import 'package:electrowave_mobile/features/stats/views/every_track_screen.dart';
 import 'package:electrowave_mobile/features/stats/views/stats_screen.dart';
+import 'package:electrowave_mobile/features/stats/views/track_stats_screen.dart';
 import 'package:electrowave_mobile/features/stats/views/year_review_screen.dart';
 import 'package:electrowave_mobile/features/stats/widgets/listening_heatmap.dart';
 import 'package:electrowave_mobile/features/settings/providers/settings_providers.dart';
@@ -228,6 +231,57 @@ Future<void> _pump(
               artist: _track.artist,
               playCount: 42,
               totalMs: 9000000,
+            ),
+          ]),
+        ),
+        trackStatsProvider(_track.id).overrideWith(
+          (ref) => Stream.value(
+            TrackStats(
+              plays: 1234,
+              starts: 1876,
+              listenedMs: 302400000,
+              firstPlayed: DateTime(2024, 12, 30),
+              lastPlayed: DateTime(_year, 9, 28),
+              firstHeard: DateTime(2025, 1, 2),
+              lastHeard: DateTime(_year, 9, 28, 23, 59),
+              playRank: 128,
+            ),
+          ),
+        ),
+        trackMonthlyListeningProvider(_track.id).overrideWith(
+          (ref) {
+            final now = DateTime.now();
+            return Stream.value([
+              for (var i = 0; i < 12; i += 2)
+                MonthlyListening(
+                  month: DateTime(now.year, now.month - i),
+                  listenedMs: 3600000 * (i + 1),
+                ),
+            ]);
+          },
+        ),
+        trackSessionsProvider(_track.id).overrideWith(
+          (ref) => Stream.value([
+            ListeningSessionEntry(
+              id: 2,
+              trackId: _track.id,
+              startedAt: DateTime(_year, 12, 28, 23, 59),
+              listenedMs: 245000,
+            ),
+            ListeningSessionEntry(
+              id: 1,
+              trackId: _track.id,
+              startedAt: DateTime(_year, 9, 28, 8, 5),
+              listenedMs: 12000,
+            ),
+          ]),
+        ),
+        trackTotalsProvider.overrideWith(
+          (ref) => Stream.value([
+            TrackTotals(track: _track, listenedMs: 302400000),
+            TrackTotals(
+              track: _queued.copyWith(totalPlayCount: 0),
+              listenedMs: 0,
             ),
           ]),
         ),
@@ -583,6 +637,51 @@ void main() {
           );
 
           expect(find.text('Listening'), findsWidgets);
+
+          await _scrollThrough(tester);
+        });
+      }
+    }
+  });
+
+  group('track stats fits', () {
+    for (final entry in _sizes.entries) {
+      for (final scale in const [1.0, 1.3, 2.0]) {
+        testWidgets('${entry.key} at ${scale}x text', (tester) async {
+          await _pump(
+            tester,
+            TrackStatsScreen(trackId: _track.id),
+            size: entry.value,
+            textScale: scale,
+          );
+
+          expect(find.text('Track stats'), findsOneWidget);
+          expect(find.text('OF PLAYED'), findsOneWidget);
+
+          await tester.scrollUntilVisible(
+            find.text('RECENT LISTENS'),
+            200,
+            scrollable: find.byType(Scrollable).first,
+          );
+          await _scrollThrough(tester);
+        });
+      }
+    }
+  });
+
+  group('every track fits', () {
+    for (final entry in _sizes.entries) {
+      for (final scale in const [1.0, 1.3, 2.0]) {
+        testWidgets('${entry.key} at ${scale}x text', (tester) async {
+          await _pump(
+            tester,
+            const EveryTrackScreen(),
+            size: entry.value,
+            textScale: scale,
+          );
+
+          expect(find.text(_track.title), findsOneWidget);
+          expect(find.text('Unplayed'), findsOneWidget);
 
           await _scrollThrough(tester);
         });
