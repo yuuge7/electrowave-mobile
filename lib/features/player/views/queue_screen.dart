@@ -6,6 +6,8 @@ import '../../../shared/widgets/art_thumb.dart';
 import '../../../shared/widgets/deck.dart';
 import '../../../shared/widgets/state_views.dart';
 import '../providers/player_providers.dart';
+import '../../../core/database/database_provider.dart';
+import '../../../shared/widgets/track_context_menu.dart';
 
 class QueueScreen extends ConsumerWidget {
   const QueueScreen({super.key});
@@ -18,7 +20,41 @@ class QueueScreen extends ConsumerWidget {
     final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Queue')),
+      appBar: AppBar(
+        title: const Text('Queue'),
+        actions: [
+          PopupMenuButton<String>(
+            tooltip: 'Queue actions',
+            onSelected: (action) async {
+              if (action == 'clear') {
+                controller.clearQueue();
+                return;
+              }
+              final name = await promptForText(
+                context,
+                title: 'Save as playlist',
+                hint: 'Playlist name',
+              );
+              if (name == null || name.trim().isEmpty) return;
+              final tracks = [
+                if (state.current != null) state.current!,
+                ...state.manualQueue,
+                ...upcoming,
+              ];
+              await ref
+                  .read(databaseProvider)
+                  .createPlaylistWithTracks(
+                    name.trim(),
+                    tracks.map((t) => t.id).toList(),
+                  );
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'save', child: Text('Save as playlist')),
+              PopupMenuItem(value: 'clear', child: Text('Clear queue')),
+            ],
+          ),
+        ],
+      ),
       body: CustomScrollView(
         slivers: [
           if (state.current != null) ...[
@@ -31,15 +67,21 @@ class QueueScreen extends ConsumerWidget {
                       ? state.current!.album
                       : state.current!.title,
                 ),
-                title: Text(state.current!.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        color: scheme.primary, fontWeight: FontWeight.w600)),
-                subtitle: Text(state.current!.artist,
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
-                trailing:
-                    Text(formatDurationMs(state.current!.durationMs)),
+                title: Text(
+                  state.current!.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: scheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                subtitle: Text(
+                  state.current!.artist,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: Text(formatDurationMs(state.current!.durationMs)),
               ),
             ),
           ],
@@ -58,10 +100,16 @@ class QueueScreen extends ConsumerWidget {
                       artPath: track.albumArtPath,
                       seed: track.album.isNotEmpty ? track.album : track.title,
                     ),
-                    title: Text(track.title,
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
-                    subtitle: Text(track.artist,
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                    title: Text(
+                      track.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(
+                      track.artist,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -94,13 +142,19 @@ class QueueScreen extends ConsumerWidget {
                 return ListTile(
                   onTap: () => controller.playContextTrack(track),
                   leading: ArtThumb(
-                      artPath: track.albumArtPath,
-                      seed: track.album.isNotEmpty ? track.album : track.title,
-                    ),
-                  title: Text(track.title,
-                      maxLines: 1, overflow: TextOverflow.ellipsis),
-                  subtitle: Text(track.artist,
-                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                    artPath: track.albumArtPath,
+                    seed: track.album.isNotEmpty ? track.album : track.title,
+                  ),
+                  title: Text(
+                    track.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(
+                    track.artist,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   trailing: Text(formatDurationMs(track.durationMs)),
                 );
               },
@@ -114,7 +168,8 @@ class QueueScreen extends ConsumerWidget {
               child: EmptyStateView(
                 icon: Icons.queue_music_outlined,
                 title: 'Queue is empty',
-                message: 'Play a track and the list it came from becomes the '
+                message:
+                    'Play a track and the list it came from becomes the '
                     'queue. Play next and Add to queue always jump ahead of '
                     'it.',
               ),

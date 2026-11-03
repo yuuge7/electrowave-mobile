@@ -11,11 +11,15 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../../core/database/database.dart';
 import 'media_write_access.dart';
 import 'riff_tag_writer.dart';
+import 'rating_tags.dart';
+import 'flac_tag_writer.dart';
 
 /// Edited tag values. A null field means "leave this tag alone".
 class TagEdit {
   const TagEdit({
     this.title,
+    this.rating,
+    this.albumArtist,
     this.artist,
     this.album,
     this.genre,
@@ -24,6 +28,8 @@ class TagEdit {
     this.year,
   });
 
+  final int? rating;
+  final String? albumArtist;
   final String? title;
   final String? artist;
   final String? album;
@@ -51,12 +57,18 @@ enum TagFileResult {
 TagFileResult applyTagEditToFile(String path, TagEdit edit) {
   final file = File(path);
   final original = file.readAsBytesSync();
+  if (edit.rating != null && (edit.rating! < 0 || edit.rating! > 5)) {
+    throw RangeError.range(edit.rating!, 0, 5);
+  }
 
   if (isRiffWave(original)) {
     final updated = rewriteRiffTags(
       original,
       RiffTagEdit(
-        info: _riffInfo(edit),
+        info: {
+          ..._riffInfo(edit),
+          if (edit.rating != null) 'IRAT': '${edit.rating}',
+        },
         rewriteId3: (tag) => _rewriteId3Tag(tag, path, edit),
       ),
     );
@@ -65,6 +77,53 @@ TagFileResult applyTagEditToFile(String path, TagEdit edit) {
     return TagFileResult.written;
   }
 
+  if (String.fromCharCodes(original.take(4)) == 'fLaC') {
+    final updated = rewriteFlacComments(original, {
+      if (edit.title != null) 'TITLE': edit.title,
+      if (edit.artist != null) 'ARTIST': edit.artist,
+      if (edit.album != null) 'ALBUM': edit.album,
+      if (edit.albumArtist != null) ...{
+        'ALBUMARTIST': edit.albumArtist,
+        'ALBUM_ARTIST': null,
+      },
+      if (edit.genre != null) 'GENRE': edit.genre,
+      if (edit.trackNumber != null) 'TRACKNUMBER': '${edit.trackNumber}',
+      if (edit.discNumber != null) 'DISCNUMBER': '${edit.discNumber}',
+      if (edit.year != null) 'DATE': '${edit.year}',
+      if (edit.rating != null) 'RATING': '${edit.rating! * 20}',
+    });
+    if (_sameBytes(original, updated)) return TagFileResult.unchanged;
+    file.writeAsBytesSync(updated, flush: true);
+    return TagFileResult.written;
+  }
+  if (edit.rating != null && p.extension(path).toLowerCase() == '.mp3') {
+    file.writeAsBytesSync(writeMp3Rating(original, edit.rating!), flush: true);
+    if (edit.title != null ||
+        edit.artist != null ||
+        edit.album != null ||
+        edit.albumArtist != null ||
+        edit.genre != null ||
+        edit.trackNumber != null ||
+        edit.discNumber != null ||
+        edit.year != null) {
+      final before = _durationOf(file);
+      _updateTags(file, edit);
+      file.writeAsBytesSync(
+        writeMp3Rating(file.readAsBytesSync(), edit.rating!),
+        flush: true,
+      );
+      final after = _durationOf(file);
+      if (before != null &&
+          after != null &&
+          (before - after).abs() > const Duration(seconds: 1)) {
+        throw StateError('Tag writer changed the audio duration');
+      }
+    }
+    return TagFileResult.written;
+  }
+  if (edit.rating != null && String.fromCharCodes(original.take(4)) != 'fLaC') {
+    return TagFileResult.unsupported;
+  }
   if (!_hasTagWriter(original)) return TagFileResult.unsupported;
 
   final before = _durationOf(file);
@@ -87,6 +146,16 @@ TagFileResult applyTagEditToFile(String path, TagEdit edit) {
 
 void _updateTags(File file, TagEdit edit) {
   updateMetadata(file, (metadata) {
+    if (edit.rating != null && metadata is VorbisMetadata) {
+      metadata.unknowns['RATING'] = '${edit.rating! * 20}';
+    }
+    if (edit.albumArtist != null) {
+      if (metadata is Mp3Metadata) metadata.bandOrOrchestra = edit.albumArtist;
+      if (metadata is VorbisMetadata) {
+        metadata.albumArtist = [edit.albumArtist!];
+      }
+      if (metadata is ApeMetadata) metadata.albumArtist = edit.albumArtist;
+    }
     if (edit.title != null) metadata.setTitle(edit.title!);
     if (edit.artist != null) metadata.setArtist(edit.artist!);
     if (edit.album != null) metadata.setAlbum(edit.album!);
@@ -174,8 +243,16 @@ class TagWriter {
   Future<String?> apply(Track track, TagEdit edit) async {
     final fileError = await _writeFile(track.filePath, edit);
 
+    if (edit.rating != null) await db.setRating(track.id, edit.rating!);
     await db.updateTrackTags(
       track.id,
+      albumArtist: edit.albumArtist == null
+          ? const Value.absent()
+          : Value(
+              edit.albumArtist!.trim().isEmpty
+                  ? null
+                  : edit.albumArtist!.trim(),
+            ),
       title: edit.title == null ? const Value.absent() : Value(edit.title!),
       artist: edit.artist == null ? const Value.absent() : Value(edit.artist!),
       album: edit.album == null ? const Value.absent() : Value(edit.album!),

@@ -20,6 +20,8 @@ import '../providers/accent_providers.dart';
 import '../providers/player_providers.dart';
 import '../providers/sleep_timer_provider.dart';
 import 'sleep_timer_sheet.dart';
+import '../services/audio_analyzer.dart';
+import '../../../shared/widgets/waveform_painter.dart';
 
 /// The full transport.
 ///
@@ -194,9 +196,7 @@ class NowPlayingScreen extends ConsumerWidget {
                                     ? track.artist
                                     : '${track.artist} · ${track.album}',
                                 style: Theme.of(context).textTheme.bodyMedium
-                                    ?.copyWith(
-                                      color: scheme.onSurfaceVariant,
-                                    ),
+                                    ?.copyWith(color: scheme.onSurfaceVariant),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -206,6 +206,9 @@ class NowPlayingScreen extends ConsumerWidget {
                               ),
                               const SizedBox(height: 18),
                               _Transport(
+                                samples:
+                                    ref.watch(waveformProvider(track)).value ??
+                                    const [],
                                 position: position,
                                 duration: duration,
                                 accent: accent,
@@ -329,10 +332,8 @@ class _ChainStatus extends ConsumerWidget {
         tone: settings.playbackRate == 1.0
             ? StatusTone.neutral
             : StatusTone.signal,
-        onTap: () => showAppSheet<void>(
-          context,
-          builder: (_) => const _SpeedSheet(),
-        ),
+        onTap: () =>
+            showAppSheet<void>(context, builder: (_) => const _SpeedSheet()),
       ),
       if (settings.skipSilence)
         const StatusChip(
@@ -396,9 +397,7 @@ class _SpeedSheet extends ConsumerWidget {
     // 0.95 in binary, and without this the readout drifts to "0.9500000001"
     // after a few taps.
     void setRate(double value) {
-      final next = double.parse(
-        value.clamp(_min, _max).toStringAsFixed(2),
-      );
+      final next = double.parse(value.clamp(_min, _max).toStringAsFixed(2));
       if (next == rate) return;
       HapticFeedback.selectionClick();
       ref.read(settingsControllerProvider.notifier).setPlaybackRate(next);
@@ -436,7 +435,8 @@ class _SpeedSheet extends ConsumerWidget {
                         .copyWith(
                           color: normal ? scheme.onSurface : tokens.signal,
                         ),
-                    semanticsLabel: 'Playback speed '
+                    semanticsLabel:
+                        'Playback speed '
                         '${formatPlaybackRate(rate)} times',
                   ),
                 ),
@@ -551,11 +551,13 @@ class _PresetKey extends StatelessWidget {
 class _Transport extends StatefulWidget {
   const _Transport({
     required this.position,
+    this.samples = const [],
     required this.duration,
     required this.accent,
     required this.onSeek,
   });
 
+  final List<double> samples;
   final Duration position;
   final Duration duration;
   final Color accent;
@@ -593,22 +595,29 @@ class _TransportState extends State<_Transport> {
             overlayColor: widget.accent.withValues(alpha: 0.14),
             padding: EdgeInsets.zero,
           ),
-          child: Slider(
-            value: maxMs > 0 ? valueMs : 0,
-            max: maxMs > 0 ? maxMs : 1,
-            // Without this a screen reader announces the raw millisecond
-            // double ("1.0 to 214000.0"), which is unusable.
-            semanticFormatterCallback: (value) =>
-                formatDuration(Duration(milliseconds: value.round())),
-            onChanged: maxMs > 0
-                ? (value) => setState(() => _dragMs = value)
-                : null,
-            onChangeEnd: maxMs > 0
-                ? (value) {
-                    widget.onSeek(Duration(milliseconds: value.round()));
-                    setState(() => _dragMs = null);
-                  }
-                : null,
+          child: CustomPaint(
+            painter: WaveformPainter(
+              widget.samples,
+              maxMs > 0 ? valueMs / maxMs : 0,
+              widget.accent,
+            ),
+            child: Slider(
+              value: maxMs > 0 ? valueMs : 0,
+              max: maxMs > 0 ? maxMs : 1,
+              // Without this a screen reader announces the raw millisecond
+              // double ("1.0 to 214000.0"), which is unusable.
+              semanticFormatterCallback: (value) =>
+                  formatDuration(Duration(milliseconds: value.round())),
+              onChanged: maxMs > 0
+                  ? (value) => setState(() => _dragMs = value)
+                  : null,
+              onChangeEnd: maxMs > 0
+                  ? (value) {
+                      widget.onSeek(Duration(milliseconds: value.round()));
+                      setState(() => _dragMs = null);
+                    }
+                  : null,
+            ),
           ),
         ),
       ],

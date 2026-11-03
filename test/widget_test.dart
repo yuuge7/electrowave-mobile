@@ -54,7 +54,7 @@ void main() {
         dynamicColor: true,
         playbackRate: 1.5,
         eqEnabled: true,
-        eqGainsDb: [6, -3, 0, 4.5, 9],
+        eqGainsDb: [6, -3, 0, 4.5, 9, 0, 0, 0, 0, 0],
         replayGain: ReplayGainMode.album,
         inactivityStopMinutes: 30,
       );
@@ -65,7 +65,7 @@ void main() {
       expect(restored.dynamicColor, isTrue);
       expect(restored.playbackRate, 1.5);
       expect(restored.eqEnabled, isTrue);
-      expect(restored.eqGainsDb, [6, -3, 0, 4.5, 9]);
+      expect(restored.eqGainsDb, [6, -3, 0, 4.5, 9, 0, 0, 0, 0, 0]);
       expect(restored.replayGain, ReplayGainMode.album);
       expect(restored.inactivityStopMinutes, 30);
       expect(restored.inactivityStopTimeout, const Duration(minutes: 30));
@@ -83,8 +83,9 @@ void main() {
       );
       // A hand-edited negative value must not disable playback instantly.
       expect(
-        AppSettings.fromJson({'inactivityStopMinutes': -5})
-            .inactivityStopMinutes,
+        AppSettings.fromJson({
+          'inactivityStopMinutes': -5,
+        }).inactivityStopMinutes,
         120,
       );
     });
@@ -102,7 +103,7 @@ void main() {
     test('clamps out-of-range values from a hand-edited file', () {
       final restored = AppSettings.fromJson({
         'playbackRate': 12.0,
-        'eqGainsDb': [99, -99, 0, 0, 0],
+        'eqGainsDb': [99, -99, 0, 0, 0, 0, 0, 0, 0, 0],
       });
 
       expect(restored.playbackRate, 2.0);
@@ -111,7 +112,9 @@ void main() {
     });
 
     test('resets EQ gains written with a different band count', () {
-      final restored = AppSettings.fromJson({'eqGainsDb': [1, 2, 3]});
+      final restored = AppSettings.fromJson({
+        'eqGainsDb': [1, 2, 3],
+      });
 
       expect(restored.eqGainsDb.length, kEqBandFrequencies.length);
       expect(restored.eqGainsDb, everyElement(0.0));

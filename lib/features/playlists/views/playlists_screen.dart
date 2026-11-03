@@ -11,6 +11,7 @@ import '../../../shared/widgets/art_thumb.dart';
 import '../../../shared/widgets/deck.dart';
 import '../../../shared/widgets/state_views.dart';
 import '../models/smart_playlist.dart';
+import '../services/playlist_file_service.dart';
 import '../providers/playlist_providers.dart';
 
 class PlaylistsScreen extends ConsumerWidget {
@@ -76,11 +77,7 @@ class PlaylistsScreen extends ConsumerWidget {
     final pinned = playlist.pinnedAt != null;
     return ListTile(
       leading: GeneratedTile(seed: playlist.name),
-      title: Text(
-        playlist.name,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
+      title: Text(playlist.name, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: Text(
         '${entry.trackCount} track${entry.trackCount == 1 ? '' : 's'}',
       ),
@@ -164,7 +161,33 @@ class PlaylistsScreen extends ConsumerWidget {
     final pinned = ref.watch(pinnedPlaylistsProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Playlists')),
+      appBar: AppBar(
+        title: const Text('Playlists'),
+        actions: [
+          IconButton(
+            tooltip: 'Import playlist file',
+            icon: const Icon(Icons.file_download_outlined),
+            onPressed: () async {
+              try {
+                final message = await PlaylistFileService(
+                  ref.read(databaseProvider),
+                ).import();
+                if (context.mounted && message != null) {
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text(message)));
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text('Import failed: $e')));
+                }
+              }
+            },
+          ),
+        ],
+      ),
       floatingActionButton: Builder(
         builder: (context) {
           final signal = context.deck.signal;
@@ -177,7 +200,10 @@ class PlaylistsScreen extends ConsumerWidget {
             foregroundColor: signal,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: signal.withValues(alpha: 0.55), width: 1.5),
+              side: BorderSide(
+                color: signal.withValues(alpha: 0.55),
+                width: 1.5,
+              ),
             ),
             onPressed: () => _createPlaylist(context),
             child: const Icon(Icons.add),
@@ -191,7 +217,8 @@ class PlaylistsScreen extends ConsumerWidget {
             return EmptyStateView(
               icon: Icons.queue_music_outlined,
               title: 'No playlists yet',
-              message: 'Build one by hand, or write rules and let the library '
+              message:
+                  'Build one by hand, or write rules and let the library '
                   'keep it filled in for you.',
               action: FilledButton.icon(
                 onPressed: () => _createPlaylist(context),

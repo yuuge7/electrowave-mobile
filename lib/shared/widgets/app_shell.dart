@@ -32,10 +32,12 @@ class _AppShellState extends ConsumerState<AppShell> {
       unawaited(ref.read(permissionServiceProvider).requestNotifications());
 
       if (ref.read(importAppliedProvider)) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Backup imported successfully'),
-          duration: Duration(seconds: 4),
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Backup imported successfully'),
+            duration: Duration(seconds: 4),
+          ),
+        );
       }
     });
   }
@@ -57,6 +59,18 @@ class _AppShellState extends ConsumerState<AppShell> {
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (widget.navigationShell.currentIndex != 0 &&
+              ref.watch(scanControllerProvider).running)
+            ListTile(
+              dense: true,
+              title: Text(
+                'Scanning ${ref.watch(scanControllerProvider).processed}/${ref.watch(scanControllerProvider).total}',
+              ),
+              trailing: TextButton(
+                onPressed: ref.read(scanControllerProvider.notifier).cancel,
+                child: const Text('Cancel'),
+              ),
+            ),
           const MiniPlayer(),
           DeckNavBar(
             selectedIndex: widget.navigationShell.currentIndex,

@@ -21,8 +21,9 @@ import java.io.File
  * widget drives the same session as the notification and needs no extra
  * plumbing on the Dart side.
  */
-class ElectrowaveWidgetProvider : HomeWidgetProvider() {
+open class ElectrowaveWidgetProvider : HomeWidgetProvider() {
 
+    protected open val widgetLayout=R.layout.electrowave_widget
     override fun onUpdate(
         context: Context,
         appWidgetManager: AppWidgetManager,
@@ -35,7 +36,7 @@ class ElectrowaveWidgetProvider : HomeWidgetProvider() {
         val playing = widgetData.getBoolean("is_playing", false)
 
         appWidgetIds.forEach { widgetId ->
-            val views = RemoteViews(context.packageName, R.layout.electrowave_widget).apply {
+            val views = RemoteViews(context.packageName, widgetLayout).apply {
                 setTextViewText(R.id.widget_title, title ?: "Nothing playing")
                 setTextViewText(R.id.widget_artist, artist ?: "Electrowave")
 
@@ -58,6 +59,13 @@ class ElectrowaveWidgetProvider : HomeWidgetProvider() {
                     setViewPadding(R.id.widget_art, inset, inset, inset, inset)
                 }
 
+                if(widgetLayout==R.layout.electrowave_widget_wide) {
+                    val progress=widgetData.getInt("track_progress",0)
+                    setProgressBar(R.id.widget_progress,1000,progress,false)
+                    setInt(R.id.widget_favorite,"setColorFilter",if(widgetData.getBoolean("track_favorite",false)) 0xFF95E1B3.toInt() else 0xFFFFFFFF.toInt())
+                    val favorite=Intent(context,MainActivity::class.java).setAction(Intent.ACTION_VIEW).putExtra("electrowave_action","favorite").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    setOnClickPendingIntent(R.id.widget_favorite,PendingIntent.getActivity(context,8210,favorite,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
+                }
                 setOnClickPendingIntent(R.id.widget_root, openAppIntent(context))
                 setOnClickPendingIntent(
                     R.id.widget_previous,
@@ -139,3 +147,6 @@ class ElectrowaveWidgetProvider : HomeWidgetProvider() {
         const val FALLBACK_INSET_DP = 14
     }
 }
+
+class ElectrowaveArtWidgetProvider:ElectrowaveWidgetProvider() {override val widgetLayout=R.layout.electrowave_widget_art}
+class ElectrowaveWideWidgetProvider:ElectrowaveWidgetProvider() {override val widgetLayout=R.layout.electrowave_widget_wide}

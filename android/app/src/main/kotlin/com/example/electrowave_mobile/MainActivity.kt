@@ -26,10 +26,20 @@ import io.flutter.plugin.common.MethodChannel
  */
 class MainActivity : AudioServiceActivity() {
 
+    private var platform:ElectrowavePlatform?=null
+    private var platformChannel:MethodChannel?=null
+
+    override fun onNewIntent(intent:Intent) {
+        super.onNewIntent(intent);setIntent(intent)
+        intent.getStringExtra("electrowave_action")?.let{platformChannel?.invokeMethod("action",it);intent.removeExtra("electrowave_action")}
+    }
+
     private val mediaWrite by lazy { MediaWriteAccess(this) }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        platformChannel=MethodChannel(flutterEngine.dartExecutor.binaryMessenger,"electrowave/platform")
+        platform=ElectrowavePlatform(this,platformChannel!!)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, MEDIA_WRITE_CHANNEL)
             .setMethodCallHandler(mediaWrite)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
@@ -47,6 +57,7 @@ class MainActivity : AudioServiceActivity() {
 
     @Deprecated("Still the only hook for startIntentSenderForResult results")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if(platform?.activityResult(requestCode,resultCode,data)==true) return
         if (mediaWrite.onActivityResult(requestCode, resultCode)) return
         @Suppress("DEPRECATION")
         super.onActivityResult(requestCode, resultCode, data)
@@ -79,7 +90,7 @@ class MainActivity : AudioServiceActivity() {
 
         val intent = when {
             Build.VERSION.SDK_INT < Build.VERSION_CODES.O -> appSettings
-            // Deep link to the channel itself when it exists â€” the app-level
+            // Deep link to the channel itself when it exists — the app-level
             // page does not show a channel's own on/off switch.
             hasPlaybackChannel() ->
                 Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)

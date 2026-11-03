@@ -39,6 +39,11 @@ import 'package:intl/intl.dart';
 /// with large text is the whole check. Sizes are the ones that broke: a short
 /// phone in landscape-ish height, and the accessibility text scales.
 final _track = Track(
+  fileSize: 0,
+  fileModifiedMs: 0,
+  rating: 0,
+  skipCount: 0,
+  startCount: 0,
   id: 1,
   filePath: '/music/harbour.mp3',
   title: 'Harbour, 4am (extended late night mix)',
@@ -52,6 +57,11 @@ final _track = Track(
 );
 
 final _queued = Track(
+  fileSize: 0,
+  fileModifiedMs: 0,
+  rating: 0,
+  skipCount: 0,
+  startCount: 0,
   id: 2,
   filePath: '/music/low-orbit.mp3',
   title: 'Low Orbit (a very long queued title to push the row)',
@@ -73,12 +83,12 @@ final _busyDay = DateTime(_year, 3, 4);
 class _StubPlayerController extends PlayerController {
   @override
   PlayerQueueState build() => PlayerQueueState(
-        current: _track,
-        context: [_track, _queued],
-        contextName: 'Library',
-        contextIndex: 0,
-        manualQueue: [_queued],
-      );
+    current: _track,
+    context: [_track, _queued],
+    contextName: 'Library',
+    contextIndex: 0,
+    manualQueue: [_queued],
+  );
 }
 
 class _StubSettingsController extends SettingsController {
@@ -154,9 +164,9 @@ Future<void> _pump(
             ),
           ),
         ),
-        playlistTracksProvider(1).overrideWith(
-          (ref) => Stream.value([_queued]),
-        ),
+        playlistTracksProvider(
+          1,
+        ).overrideWith((ref) => Stream.value([_queued])),
         // The picker opens on artist order.
         pickerLibraryProvider(
           LibrarySort.artist,
@@ -177,9 +187,7 @@ Future<void> _pump(
         totalListeningMsProvider.overrideWith((ref) => Stream.value(9000000)),
         totalListenedMsProvider.overrideWith((ref) => Stream.value(8400000)),
         topTracksProvider.overrideWith(
-          (ref) => Stream.value([
-            TopTrackStat(track: _track, playCount: 42),
-          ]),
+          (ref) => Stream.value([TopTrackStat(track: _track, playCount: 42)]),
         ),
         topArtistsProvider.overrideWith(
           (ref) => Stream.value([
@@ -201,25 +209,25 @@ Future<void> _pump(
             DailyListening(day: DateTime(_year, 3, 5), listenedMs: 1800000),
           ]),
         ),
-        dayListenedMsProvider(_busyDay).overrideWith(
-          (ref) => Stream.value(3600000),
-        ),
+        dayListenedMsProvider(
+          _busyDay,
+        ).overrideWith((ref) => Stream.value(3600000)),
         dayPlayCountProvider(_busyDay).overrideWith((ref) => Stream.value(14)),
-        dayDistinctTracksProvider(_busyDay).overrideWith(
-          (ref) => Stream.value(9),
-        ),
+        dayDistinctTracksProvider(
+          _busyDay,
+        ).overrideWith((ref) => Stream.value(9)),
         dayTopTracksProvider(_busyDay).overrideWith(
           (ref) => Stream.value([
             TrackListeningStat(track: _track, listenedMs: 3000000),
             TrackListeningStat(track: _queued, listenedMs: 600000),
           ]),
         ),
-        yearListenedMsProvider(_year).overrideWith(
-          (ref) => Stream.value(8400000),
-        ),
-        yearDistinctTracksProvider(_year).overrideWith(
-          (ref) => Stream.value(37),
-        ),
+        yearListenedMsProvider(
+          _year,
+        ).overrideWith((ref) => Stream.value(8400000)),
+        yearDistinctTracksProvider(
+          _year,
+        ).overrideWith((ref) => Stream.value(37)),
         yearTopTracksProvider(_year).overrideWith(
           (ref) => Stream.value([
             TrackListeningStat(track: _track, listenedMs: 8400000),
@@ -248,18 +256,16 @@ Future<void> _pump(
             ),
           ),
         ),
-        trackMonthlyListeningProvider(_track.id).overrideWith(
-          (ref) {
-            final now = DateTime.now();
-            return Stream.value([
-              for (var i = 0; i < 12; i += 2)
-                MonthlyListening(
-                  month: DateTime(now.year, now.month - i),
-                  listenedMs: 3600000 * (i + 1),
-                ),
-            ]);
-          },
-        ),
+        trackMonthlyListeningProvider(_track.id).overrideWith((ref) {
+          final now = DateTime.now();
+          return Stream.value([
+            for (var i = 0; i < 12; i += 2)
+              MonthlyListening(
+                month: DateTime(now.year, now.month - i),
+                listenedMs: 3600000 * (i + 1),
+              ),
+          ]);
+        }),
         trackSessionsProvider(_track.id).overrideWith(
           (ref) => Stream.value([
             ListeningSessionEntry(
@@ -333,8 +339,9 @@ void main() {
   group('sheets fit', () {
     for (final entry in _sizes.entries) {
       for (final scale in const [1.0, 1.3, 2.0]) {
-        testWidgets('track menu — ${entry.key} at ${scale}x text',
-            (tester) async {
+        testWidgets('track menu — ${entry.key} at ${scale}x text', (
+          tester,
+        ) async {
           await _pump(
             tester,
             _sheetLauncher((context) => showTrackContextMenu(context, _track)),
@@ -347,8 +354,9 @@ void main() {
           expect(find.text('Play next'), findsOneWidget);
         });
 
-        testWidgets('sleep timer — ${entry.key} at ${scale}x text',
-            (tester) async {
+        testWidgets('sleep timer — ${entry.key} at ${scale}x text', (
+          tester,
+        ) async {
           await _pump(
             tester,
             _sheetLauncher(showSleepTimerSheet),
@@ -397,8 +405,11 @@ void main() {
           // The band sliders sit below the fold on a short screen, and a
           // lazy list does not build — or overflow — what it has not
           // reached, so scroll them into view before checking.
-          for (var i = 0; i < 8 && find.byType(Slider).evaluate().isEmpty;
-              i++) {
+          for (
+            var i = 0;
+            i < 8 && find.byType(Slider).evaluate().isEmpty;
+            i++
+          ) {
             await tester.drag(
               find.byType(Scrollable).first,
               const Offset(0, -160),
@@ -501,8 +512,9 @@ void main() {
   group('track picker fits', () {
     for (final entry in _sizes.entries) {
       for (final scale in const [1.0, 1.3, 2.0]) {
-        testWidgets('new playlist — ${entry.key} at ${scale}x text',
-            (tester) async {
+        testWidgets('new playlist — ${entry.key} at ${scale}x text', (
+          tester,
+        ) async {
           await _pump(
             tester,
             const TrackPickerScreen(),
@@ -528,8 +540,9 @@ void main() {
           }
         });
 
-        testWidgets('adding to a playlist — ${entry.key} at ${scale}x text',
-            (tester) async {
+        testWidgets('adding to a playlist — ${entry.key} at ${scale}x text', (
+          tester,
+        ) async {
           await _pump(
             tester,
             const TrackPickerScreen(playlistId: 1),

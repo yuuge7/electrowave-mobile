@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:audio_metadata_reader/audio_metadata_reader.dart';
 import 'package:electrowave_mobile/features/library/services/tag_writer.dart';
+import 'package:electrowave_mobile/features/library/services/library_scanner.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
@@ -35,6 +36,21 @@ void main() {
   );
 
   group('WAV', () {
+    test(
+      'rating round trips through the scanner without changing samples',
+      () async {
+        final audio = _noise(8000);
+        final file = await write('rated.wav', _wav(audio));
+        expect(
+          applyTagEditToFile(file.path, const TagEdit(rating: 5)),
+          TagFileResult.written,
+        );
+        expect(_chunkData(await file.readAsBytes(), 'data'), audio);
+        expect(parseTags(file.path).rating, 5);
+        applyTagEditToFile(file.path, const TagEdit(rating: 0));
+        expect(parseTags(file.path).rating, 0);
+      },
+    );
     test('rewrites INFO and leaves the audio byte-identical', () async {
       final audio = _noise(200000);
       final file = await write(
@@ -127,6 +143,61 @@ void main() {
     });
   });
 
+  test('FLAC rating metadata preserves the opaque audio payload', () async {
+    // Metadata-only fixture: the tag writer must not interpret audio frames.
+    final streamInfo = ByteData(34)
+      ..setUint16(0, 16)
+      ..setUint16(2, 4096)
+      ..setUint64(10, (44100 << 44) | (1 << 41) | (15 << 36) | 44100);
+    final audio = _noise(300);
+    final comments = BytesBuilder();
+    void number(int value) => comments.add(
+      (ByteData(4)..setUint32(0, value, Endian.little)).buffer.asUint8List(),
+    );
+    final vendor = utf8.encode('Existing vendor');
+    number(vendor.length);
+    comments.add(vendor);
+    number(2);
+    for (final value in ['CUSTOM=keep this', 'REPLAYGAIN_TRACK_GAIN=-3.0 dB']) {
+      final bytes = utf8.encode(value);
+      number(bytes.length);
+      comments.add(bytes);
+    }
+    final commentBytes = comments.takeBytes();
+    final file = await write('rated.flac', [
+      ...ascii.encode('fLaC'),
+      0,
+      0,
+      0,
+      34,
+      ...streamInfo.buffer.asUint8List(),
+      132,
+      (commentBytes.length >> 16) & 255,
+      (commentBytes.length >> 8) & 255,
+      commentBytes.length & 255,
+      ...commentBytes,
+      ...audio,
+    ]);
+    expect(
+      applyTagEditToFile(file.path, const TagEdit(rating: 4)),
+      TagFileResult.written,
+    );
+    expect(parseTags(file.path).rating, 4);
+    applyTagEditToFile(
+      file.path,
+      const TagEdit(title: 'Retitled', albumArtist: 'Compilation'),
+    );
+    expect(parseTags(file.path).rating, 4);
+    expect(parseTags(file.path).title, 'Retitled');
+    expect(parseTags(file.path).albumArtist, 'Compilation');
+    final metadata = readAllMetadata(file) as VorbisMetadata;
+    expect(metadata.unknowns['CUSTOM'], 'keep this');
+    expect(metadata.replayGainTrackGain, ['-3.0 dB']);
+    final result = await file.readAsBytes();
+    expect(result.sublist(50, 50 + vendor.length), vendor);
+    expect(result.sublist(result.length - audio.length), audio);
+  });
+
   group('MP3', () {
     const fixtures = 'test_files/same_song';
 
@@ -147,10 +218,7 @@ void main() {
       expect(meta.album, 'Nightfield');
       expect(meta.year?.year, 2024);
       // The writer adds a TLEN frame, which is millisecond precision.
-      expect(
-        meta.duration!.inMilliseconds,
-        before.duration!.inMilliseconds,
-      );
+      expect(meta.duration!.inMilliseconds, before.duration!.inMilliseconds);
     });
 
     test('an untagged MP3 has no writer and is left alone', () async {

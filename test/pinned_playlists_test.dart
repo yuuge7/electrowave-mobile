@@ -28,6 +28,15 @@ AppDatabase _openAt(int version, List<String> tables) {
   return AppDatabase.forTesting(
     NativeDatabase.memory(
       setup: (raw) {
+        raw.execute(
+          'CREATE TABLE tracks(id INTEGER PRIMARY KEY,file_path TEXT,title TEXT,artist TEXT,album TEXT,duration_ms INTEGER,genre TEXT,is_deleted INTEGER,is_favorite INTEGER,track_number INTEGER,disc_number INTEGER,year INTEGER)',
+        );
+        raw.execute(
+          'CREATE TABLE listening_sessions(id INTEGER PRIMARY KEY,track_id INTEGER,started_at INTEGER,listened_ms INTEGER)',
+        );
+        raw.execute(
+          'CREATE TABLE playback_history(id INTEGER PRIMARY KEY,track_id INTEGER,played_at INTEGER)',
+        );
         for (final sql in tables) {
           raw.execute(sql);
         }

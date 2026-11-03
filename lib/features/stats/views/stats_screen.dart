@@ -11,6 +11,7 @@ import '../../../shared/widgets/state_views.dart';
 import '../../player/providers/player_providers.dart';
 import '../providers/stats_providers.dart';
 import '../widgets/stat_rank_row.dart';
+import 'listening_extras_screen.dart';
 
 /// Listening figures.
 ///
@@ -47,6 +48,14 @@ class StatsScreen extends ConsumerWidget {
         title: const Text('Listening'),
         actions: [
           IconButton(
+            tooltip: 'Listening patterns',
+            icon: const Icon(Icons.query_stats),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ListeningExtrasScreen()),
+            ),
+          ),
+          IconButton(
             icon: const Icon(Icons.format_list_numbered_rounded),
             tooltip: 'Every track',
             onPressed: () => context.push('/stats/tracks'),
@@ -67,18 +76,15 @@ class StatsScreen extends ConsumerWidget {
             padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
             child: _PeriodPicker(period: period),
           ),
-          _Headline(
-            totalMs: totalMs,
-            listenedMs: listenedMs,
-            period: period,
-          ),
+          _Headline(totalMs: totalMs, listenedMs: listenedMs, period: period),
           if (topTracks.isEmpty && topArtists.isEmpty)
             const Padding(
               padding: EdgeInsets.only(top: 40),
               child: EmptyStateView(
                 icon: Icons.equalizer_outlined,
                 title: 'Nothing logged yet',
-                message: 'A track counts once you have actually heard a '
+                message:
+                    'A track counts once you have actually heard a '
                     'quarter of it, so play something and come back.',
                 compact: true,
               ),
@@ -101,19 +107,18 @@ class StatsScreen extends ConsumerWidget {
                     : stat.track.title,
                 value: stat.playCount.toDouble(),
                 maxValue: topTracks.first.playCount.toDouble(),
-                primary: '${stat.playCount} '
+                primary:
+                    '${stat.playCount} '
                     'play${stat.playCount == 1 ? '' : 's'}',
                 secondary: heard[stat.track.id] == null
                     ? null
-                    : '${formatListeningTime(
-                        Duration(milliseconds: heard[stat.track.id]!),
-                      )} heard',
+                    : '${formatListeningTime(Duration(milliseconds: heard[stat.track.id]!))} heard',
                 onTap: () =>
                     ref.read(playerControllerProvider.notifier).playFromList(
-                          stat.track,
-                          [for (final s in topTracks) s.track],
-                          'Most played',
-                        ),
+                      stat.track,
+                      [for (final s in topTracks) s.track],
+                      'Most played',
+                    ),
                 onLongPress: () =>
                     context.push('/track/${stat.track.id}/stats'),
               ),
@@ -152,10 +157,10 @@ class StatsScreen extends ConsumerWidget {
                 ),
                 onTap: () =>
                     ref.read(playerControllerProvider.notifier).playFromList(
-                          stat.track,
-                          [for (final s in byListeningTime) s.track],
-                          'Time heard',
-                        ),
+                      stat.track,
+                      [for (final s in byListeningTime) s.track],
+                      'Time heard',
+                    ),
                 onLongPress: () =>
                     context.push('/track/${stat.track.id}/stats'),
               ),
@@ -166,7 +171,8 @@ class StatsScreen extends ConsumerWidget {
               StatRankRow(
                 rank: index + 1,
                 title: stat.artist,
-                subtitle: '${stat.playCount} '
+                subtitle:
+                    '${stat.playCount} '
                     'play${stat.playCount == 1 ? '' : 's'}',
                 seed: stat.artist,
                 value: stat.totalMs.toDouble(),
@@ -235,7 +241,8 @@ class _Headline extends StatelessWidget {
                     const SizedBox(height: 8),
                     Text(
                       formatListeningTime(Duration(milliseconds: listenedMs)),
-                      style: type.counter(20, weight: 400)
+                      style: type
+                          .counter(20, weight: 400)
                           .copyWith(color: scheme.onSurface),
                     ),
                   ],
@@ -295,8 +302,8 @@ class _Caption extends StatelessWidget {
       child: Text(
         text,
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
       ),
     );
   }
@@ -368,7 +375,8 @@ class _PeriodPicker extends ConsumerWidget {
               DateTime(2000, period.month ?? 1),
             ),
             onSelected: (value) {
-              final month = 1 +
+              final month =
+                  1 +
                   [
                     for (var m = 1; m <= 12; m++)
                       DateFormat.MMM().format(DateTime(2000, m)),
@@ -429,9 +437,12 @@ class _Rail extends StatelessWidget {
               ),
               child: Text(
                 value,
-                style: type.instrument(11, weight: 500).copyWith(
-                      color:
-                          isSelected ? tokens.signal : scheme.onSurfaceVariant,
+                style: type
+                    .instrument(11, weight: 500)
+                    .copyWith(
+                      color: isSelected
+                          ? tokens.signal
+                          : scheme.onSurfaceVariant,
                     ),
               ),
             ),
@@ -449,8 +460,6 @@ String _periodLabel(StatsPeriod period) {
     case StatsPeriodKind.year:
       return '${period.year}';
     case StatsPeriodKind.month:
-      return DateFormat.yMMMM().format(
-        DateTime(period.year!, period.month!),
-      );
+      return DateFormat.yMMMM().format(DateTime(period.year!, period.month!));
   }
 }

@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/theme/theme.dart';
+import 'features/library/providers/library_providers.dart';
+import 'features/settings/services/platform_bootstrap.dart';
 import 'features/library/providers/browse_providers.dart';
 import 'features/player/providers/player_providers.dart';
 import 'features/library/views/browse_views.dart';
@@ -37,93 +39,105 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state, navigationShell) =>
           AppShell(navigationShell: navigationShell),
       branches: [
-        StatefulShellBranch(routes: [
-          GoRoute(
-            path: '/library',
-            builder: (context, state) => const LibraryScreen(),
-          ),
-        ]),
-        StatefulShellBranch(routes: [
-          GoRoute(
-            path: '/playlists',
-            builder: (context, state) => const PlaylistsScreen(),
-            routes: [
-              // Ahead of ':id', which would otherwise swallow "new" and
-              // "smart" as playlist ids.
-              //
-              // Both pickers sit on the root navigator: picking tracks is one
-              // task with its own bottom bar, and the mini player and nav bar
-              // would sit under it competing for the same edge.
-              GoRoute(
-                path: 'new',
-                parentNavigatorKey: _rootNavigatorKey,
-                builder: (context, state) => const TrackPickerScreen(),
-              ),
-              GoRoute(
-                path: 'smart/new',
-                builder: (context, state) => const SmartPlaylistEditorScreen(),
-              ),
-              GoRoute(
-                path: 'smart/:id',
-                builder: (context, state) => SmartPlaylistDetailScreen(
-                  smartPlaylistId:
-                      int.tryParse(state.pathParameters['id'] ?? '') ?? -1,
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/library',
+              builder: (context, state) => const LibraryScreen(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/playlists',
+              builder: (context, state) => const PlaylistsScreen(),
+              routes: [
+                // Ahead of ':id', which would otherwise swallow "new" and
+                // "smart" as playlist ids.
+                //
+                // Both pickers sit on the root navigator: picking tracks is one
+                // task with its own bottom bar, and the mini player and nav bar
+                // would sit under it competing for the same edge.
+                GoRoute(
+                  path: 'new',
+                  parentNavigatorKey: _rootNavigatorKey,
+                  builder: (context, state) => const TrackPickerScreen(),
                 ),
-                routes: [
-                  GoRoute(
-                    path: 'edit',
-                    builder: (context, state) => SmartPlaylistEditorScreen(
-                      smartPlaylistId:
-                          int.tryParse(state.pathParameters['id'] ?? '') ?? -1,
-                    ),
+                GoRoute(
+                  path: 'smart/new',
+                  builder: (context, state) =>
+                      const SmartPlaylistEditorScreen(),
+                ),
+                GoRoute(
+                  path: 'smart/:id',
+                  builder: (context, state) => SmartPlaylistDetailScreen(
+                    smartPlaylistId:
+                        int.tryParse(state.pathParameters['id'] ?? '') ?? -1,
                   ),
-                ],
-              ),
-              GoRoute(
-                path: ':id',
-                builder: (context, state) => PlaylistDetailScreen(
-                  playlistId:
-                      int.tryParse(state.pathParameters['id'] ?? '') ?? -1,
-                ),
-                routes: [
-                  GoRoute(
-                    path: 'add',
-                    parentNavigatorKey: _rootNavigatorKey,
-                    builder: (context, state) => TrackPickerScreen(
-                      playlistId:
-                          int.tryParse(state.pathParameters['id'] ?? '') ?? -1,
+                  routes: [
+                    GoRoute(
+                      path: 'edit',
+                      builder: (context, state) => SmartPlaylistEditorScreen(
+                        smartPlaylistId:
+                            int.tryParse(state.pathParameters['id'] ?? '') ??
+                            -1,
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ]),
-        StatefulShellBranch(routes: [
-          GoRoute(
-            path: '/stats',
-            builder: (context, state) => const StatsScreen(),
-            routes: [
-              GoRoute(
-                path: 'tracks',
-                builder: (context, state) => const EveryTrackScreen(),
-              ),
-              GoRoute(
-                path: 'year/:year',
-                builder: (context, state) => YearReviewScreen(
-                  year: int.tryParse(state.pathParameters['year'] ?? '') ??
-                      DateTime.now().year,
+                  ],
                 ),
-              ),
-            ],
-          ),
-        ]),
-        StatefulShellBranch(routes: [
-          GoRoute(
-            path: '/settings',
-            builder: (context, state) => const SettingsScreen(),
-          ),
-        ]),
+                GoRoute(
+                  path: ':id',
+                  builder: (context, state) => PlaylistDetailScreen(
+                    playlistId:
+                        int.tryParse(state.pathParameters['id'] ?? '') ?? -1,
+                  ),
+                  routes: [
+                    GoRoute(
+                      path: 'add',
+                      parentNavigatorKey: _rootNavigatorKey,
+                      builder: (context, state) => TrackPickerScreen(
+                        playlistId:
+                            int.tryParse(state.pathParameters['id'] ?? '') ??
+                            -1,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/stats',
+              builder: (context, state) => const StatsScreen(),
+              routes: [
+                GoRoute(
+                  path: 'tracks',
+                  builder: (context, state) => const EveryTrackScreen(),
+                ),
+                GoRoute(
+                  path: 'year/:year',
+                  builder: (context, state) => YearReviewScreen(
+                    year:
+                        int.tryParse(state.pathParameters['year'] ?? '') ??
+                        DateTime.now().year,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/settings',
+              builder: (context, state) => const SettingsScreen(),
+            ),
+          ],
+        ),
       ],
     ),
     // Full-screen pages above the shell (no bottom nav / mini player).
@@ -181,10 +195,7 @@ final GoRouter appRouter = GoRouter(
         trackId: int.tryParse(state.pathParameters['id'] ?? '') ?? -1,
       ),
     ),
-    GoRoute(
-      path: '/trash',
-      builder: (context, state) => const TrashScreen(),
-    ),
+    GoRoute(path: '/trash', builder: (context, state) => const TrashScreen()),
     GoRoute(
       path: '/equalizer',
       builder: (context, state) => const EqualizerScreen(),
@@ -197,6 +208,8 @@ class ElectrowaveApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(libraryPreferencesProvider);
+    ref.watch(platformBootstrapProvider);
     final settings = ref.watch(settingsControllerProvider);
 
     // Every touch anywhere in the app feeds the audio handler's

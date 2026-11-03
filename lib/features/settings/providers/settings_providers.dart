@@ -9,11 +9,13 @@ import '../../player/providers/player_providers.dart';
 import '../services/backup_service.dart';
 import '../services/settings_persistence.dart';
 
-final backupServiceProvider =
-    Provider<BackupService>((ref) => BackupService(ref.watch(databaseProvider)));
+final backupServiceProvider = Provider<BackupService>(
+  (ref) => BackupService(ref.watch(databaseProvider)),
+);
 
-final settingsPersistenceProvider =
-    Provider<SettingsPersistence>((ref) => SettingsPersistence());
+final settingsPersistenceProvider = Provider<SettingsPersistence>(
+  (ref) => SettingsPersistence(),
+);
 
 final settingsControllerProvider =
     NotifierProvider<SettingsController, AppSettings>(SettingsController.new);
@@ -44,9 +46,43 @@ class SettingsController extends Notifier<AppSettings> {
 
   Future<void> _update(AppSettings next, {bool audio = false}) async {
     state = next;
-    unawaited(_persistence.save(next));
+    await _persistence.save(next);
     if (audio) await _applyToPlayer(next);
   }
+
+  Future<void> setMono(bool value) =>
+      _update(state.copyWith(mono: value), audio: true);
+  Future<void> setCrossfeed(bool value) =>
+      _update(state.copyWith(crossfeed: value), audio: true);
+  Future<void> setGapless(bool value) =>
+      _update(state.copyWith(gapless: value), audio: true);
+  Future<void> setBackupFolder(String? value) => _update(
+    state.copyWith(backupFolder: value, clearBackupFolder: value == null),
+  );
+  Future<void> setEqCurve(List<double> gains) =>
+      _update(state.copyWith(eqGainsDb: List.of(gains)), audio: true);
+  Future<void> setEqProfile(String profile) {
+    final profiles = {
+      ...state.eqProfiles,
+      state.eqProfile: List<double>.from(state.eqGainsDb),
+    };
+    return _update(
+      state.copyWith(
+        eqProfile: profile,
+        eqProfiles: profiles,
+        eqGainsDb: profiles[profile] ?? List.filled(10, 0),
+      ),
+      audio: true,
+    );
+  }
+
+  Future<void> saveEqPreset(String name) => _update(
+    state.copyWith(
+      eqPresets: {...state.eqPresets, name: List.of(state.eqGainsDb)},
+    ),
+  );
+  Future<void> deleteEqPreset(String name) =>
+      _update(state.copyWith(eqPresets: {...state.eqPresets}..remove(name)));
 
   Future<void> setThemeMode(AppThemeMode mode) =>
       _update(state.copyWith(themeMode: mode));
@@ -73,11 +109,11 @@ class SettingsController extends Notifier<AppSettings> {
   }
 
   Future<void> resetEq() => _update(
-        state.copyWith(
-          eqGainsDb: List<double>.filled(kEqBandFrequencies.length, 0),
-        ),
-        audio: true,
-      );
+    state.copyWith(
+      eqGainsDb: List<double>.filled(kEqBandFrequencies.length, 0),
+    ),
+    audio: true,
+  );
 
   Future<void> setReplayGain(ReplayGainMode mode) =>
       _update(state.copyWith(replayGain: mode), audio: true);
@@ -90,21 +126,26 @@ class SettingsController extends Notifier<AppSettings> {
 
   /// 0 disables the no-interaction auto-stop.
   Future<void> setInactivityStopMinutes(int minutes) => _update(
-        state.copyWith(inactivityStopMinutes: minutes < 0 ? 0 : minutes),
-        audio: true,
-      );
+    state.copyWith(inactivityStopMinutes: minutes < 0 ? 0 : minutes),
+    audio: true,
+  );
 }
 
 /// IDs of library tracks whose files no longer exist on disk (e.g. after a
 /// backup import onto a device with different files). Flagged in the UI and
 /// skipped by playback instead of crashing it.
 final missingFilesProvider = FutureProvider<Set<int>>((ref) async {
-  final tracks = await ref.watch(libraryTracksProvider.future);
+  ref.watch(scanControllerProvider.select((s) => s.running));
+  final db = ref.watch(databaseProvider);
+  final tracks = await db.watchLibrary().first;
   final missing = <int>{};
-  for (final track in tracks) {
-    if (!await File(track.filePath).exists()) {
-      missing.add(track.id);
-    }
+  for (var start = 0; start < tracks.length; start += 32) {
+    final batch = tracks.skip(start).take(32);
+    await Future.wait(
+      batch.map((track) async {
+        if (!await File(track.filePath).exists()) missing.add(track.id);
+      }),
+    );
   }
   return missing;
 });

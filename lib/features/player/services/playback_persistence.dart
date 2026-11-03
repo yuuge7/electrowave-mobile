@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import '../../../core/services/local_log.dart';
 
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -32,28 +33,28 @@ class PersistedPlayback {
   final bool fromManualQueue;
 
   Map<String, dynamic> toJson() => {
-        'currentTrackId': currentTrackId,
-        'positionMs': positionMs,
-        'contextTrackIds': contextTrackIds,
-        'contextName': contextName,
-        'manualQueueIds': manualQueueIds,
-        'contextIndex': contextIndex,
-        'shuffle': shuffle,
-        'shuffleOrder': shuffleOrder,
-        'repeatIndex': repeatIndex,
-        'fromManualQueue': fromManualQueue,
-      };
+    'currentTrackId': currentTrackId,
+    'positionMs': positionMs,
+    'contextTrackIds': contextTrackIds,
+    'contextName': contextName,
+    'manualQueueIds': manualQueueIds,
+    'contextIndex': contextIndex,
+    'shuffle': shuffle,
+    'shuffleOrder': shuffleOrder,
+    'repeatIndex': repeatIndex,
+    'fromManualQueue': fromManualQueue,
+  };
 
   static PersistedPlayback? fromJson(Map<String, dynamic> json) {
     try {
       return PersistedPlayback(
         currentTrackId: json['currentTrackId'] as int?,
         positionMs: (json['positionMs'] as num?)?.toInt() ?? 0,
-        contextTrackIds:
-            (json['contextTrackIds'] as List? ?? const []).cast<int>(),
+        contextTrackIds: (json['contextTrackIds'] as List? ?? const [])
+            .cast<int>(),
         contextName: json['contextName'] as String? ?? '',
-        manualQueueIds:
-            (json['manualQueueIds'] as List? ?? const []).cast<int>(),
+        manualQueueIds: (json['manualQueueIds'] as List? ?? const [])
+            .cast<int>(),
         contextIndex: (json['contextIndex'] as num?)?.toInt() ?? -1,
         shuffle: json['shuffle'] as bool? ?? false,
         shuffleOrder: (json['shuffleOrder'] as List? ?? const []).cast<int>(),
@@ -68,6 +69,7 @@ class PersistedPlayback {
 
 class PlaybackPersistence {
   File? _file;
+  Future<void> _pending = Future.value();
   DateTime _lastSave = DateTime.fromMillisecondsSinceEpoch(0);
 
   Future<File> _stateFile() async {
@@ -77,14 +79,22 @@ class PlaybackPersistence {
     return _file!;
   }
 
-  Future<void> save(PersistedPlayback state) async {
-    try {
-      final file = await _stateFile();
-      await file.writeAsString(jsonEncode(state.toJson()), flush: true);
-      _lastSave = DateTime.now();
-    } catch (_) {
-      // Best effort; never crash playback over persistence.
-    }
+  Future<void> save(PersistedPlayback state) {
+    _lastSave = DateTime.now();
+    _pending = _pending
+        .then((_) async {
+          final file = await _stateFile();
+          final temporary = File('${file.path}.tmp');
+          await temporary.writeAsString(
+            jsonEncode(state.toJson()),
+            flush: true,
+          );
+          await temporary.rename(file.path);
+        })
+        .catchError((Object e, StackTrace s) {
+          LocalLog.record(e, s);
+        });
+    return _pending;
   }
 
   /// Save at most every [minInterval] — used from the position stream.

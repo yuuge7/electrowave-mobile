@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../../core/database/database.dart';
+import 'rating_tags.dart';
 
 const Set<String> kAudioExtensions = {'.mp3', '.flac', '.m4a', '.ogg', '.wav'};
 
@@ -22,7 +23,9 @@ class ScanResult {
 /// and would jank the UI otherwise).
 class ParsedTags {
   const ParsedTags({
+    this.rating,
     this.title,
+    this.albumArtist,
     this.artist,
     this.album,
     this.genre,
@@ -34,6 +37,8 @@ class ParsedTags {
     this.year,
   });
 
+  final int? rating;
+  final String? albumArtist;
   final String? title;
   final String? artist;
   final String? album;
@@ -50,8 +55,43 @@ ParsedTags parseTags(String filePath) {
   try {
     final meta = readMetadata(File(filePath), getImage: true);
     final picture = meta.pictures.isNotEmpty ? meta.pictures.first : null;
+    int? rating;
+    try {
+      final raw = readAllMetadata(File(filePath), getImage: false);
+      if (raw is Mp3Metadata && raw.popularimeter != null) {
+        final value = raw.popularimeter!.rating;
+        rating = value == 0
+            ? 0
+            : value < 32
+            ? 1
+            : value < 96
+            ? 2
+            : value < 160
+            ? 3
+            : value < 224
+            ? 4
+            : 5;
+      }
+      if (raw is Mp3Metadata) {
+        rating = readMp3FileRating(File(filePath)) ?? rating;
+      }
+      if (raw is VorbisMetadata) {
+        final value = raw.unknowns.entries
+            .where((e) => e.key.toUpperCase() == 'RATING')
+            .firstOrNull
+            ?.value;
+        final number = int.tryParse(value ?? '');
+        if (number != null) rating = (number / 20).round().clamp(0, 5);
+      }
+      if (raw is RiffMetadata) {
+        rating = int.tryParse(raw.unknowns['IRAT'] ?? '');
+      }
+    } catch (_) {}
+
     return ParsedTags(
+      rating: rating,
       title: meta.title,
+      albumArtist: meta.albumArtist,
       artist: meta.artist,
       album: meta.album,
       genre: meta.genres.isNotEmpty ? meta.genres.first : null,
@@ -98,13 +138,19 @@ class LibraryScanner {
   }
 
   /// Recursively collect audio files under [folderPath].
-  Future<List<String>> collectAudioFiles(String folderPath) async {
+  Future<List<String>> collectAudioFiles(
+    String folderPath, {
+    bool Function()? cancelled,
+  }) async {
     final result = <String>[];
     final dir = Directory(folderPath);
     if (!await dir.exists()) return result;
     try {
-      await for (final entity
-          in dir.list(recursive: true, followLinks: false)) {
+      await for (final entity in dir.list(
+        recursive: true,
+        followLinks: false,
+      )) {
+        if (cancelled?.call() ?? false) break;
         if (entity is File &&
             kAudioExtensions.contains(p.extension(entity.path).toLowerCase())) {
           result.add(entity.path);
@@ -117,10 +163,13 @@ class LibraryScanner {
     return result;
   }
 
+  void clearCaches() => _folderArtCache.clear();
+
   /// Import one audio file: read tags + embedded art, upsert into the DB.
   /// Returns true on success.
   Future<bool> importFile(String filePath) async {
     try {
+      final stat = await File(filePath).stat();
       final meta = await Isolate.run(() => parseTags(filePath));
 
       final fallbackTitle = p.basenameWithoutExtension(filePath);
@@ -139,26 +188,38 @@ class LibraryScanner {
         artPath = await _findFolderArt(p.dirname(filePath));
       }
 
-      await db.upsertScannedTrack(TracksCompanion.insert(
-        filePath: filePath,
-        title: (meta.title?.trim().isNotEmpty ?? false)
-            ? meta.title!.trim()
-            : fallbackTitle,
-        artist: (meta.artist?.trim().isNotEmpty ?? false)
-            ? meta.artist!.trim()
-            : kUnknownArtist,
-        album: (meta.album?.trim().isNotEmpty ?? false)
-            ? meta.album!.trim()
-            : 'Unknown album',
-        durationMs: meta.durationMs,
-        genre: Value(meta.genre?.trim().isNotEmpty ?? false
-            ? meta.genre!.trim()
-            : null),
-        albumArtPath: Value(artPath),
-        trackNumber: Value(meta.trackNumber),
-        discNumber: Value(meta.discNumber),
-        year: Value(meta.year),
-      ));
+      await db.upsertScannedTrack(
+        TracksCompanion.insert(
+          rating: meta.rating == null
+              ? const Value.absent()
+              : Value(meta.rating!.clamp(0, 5)),
+          filePath: filePath,
+          fileSize: Value(stat.size),
+          fileModifiedMs: Value(stat.modified.millisecondsSinceEpoch),
+          albumArtist: Value(
+            meta.albumArtist?.trim().isNotEmpty == true
+                ? meta.albumArtist!.trim()
+                : null,
+          ),
+          title: (meta.title?.trim().isNotEmpty ?? false)
+              ? meta.title!.trim()
+              : fallbackTitle,
+          artist: (meta.artist?.trim().isNotEmpty ?? false)
+              ? meta.artist!.trim()
+              : kUnknownArtist,
+          album: (meta.album?.trim().isNotEmpty ?? false)
+              ? meta.album!.trim()
+              : 'Unknown album',
+          durationMs: meta.durationMs,
+          genre: Value(
+            meta.genre?.trim().isNotEmpty ?? false ? meta.genre!.trim() : null,
+          ),
+          albumArtPath: Value(artPath),
+          trackNumber: Value(meta.trackNumber),
+          discNumber: Value(meta.discNumber),
+          year: Value(meta.year),
+        ),
+      );
       return true;
     } catch (_) {
       return false;

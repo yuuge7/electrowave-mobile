@@ -9,7 +9,7 @@ A local music player for Android, built with Flutter. Your files, on your phone 
 - **Favorites** — heart any track from the now-playing screen or its context menu.
 - **Tag editor** — fix title, artist, album, genre, track/disc number and year in-app. Writes the file's tags and the library row, so a rescan won't undo your edit.
 - **Removed tracks** — removing a track is a soft delete, so play history survives; Settings → Removed tracks restores it or deletes it for good. Audio files on disk are never touched.
-- **Equalizer** — 5-band EQ (±12 dB) with presets, plus ReplayGain volume normalization per track or per album.
+- **Equalizer** — 10-band EQ (±12 dB) with presets, plus ReplayGain volume normalization per track or per album.
 - **Playback speed** — 0.5× to 2×, persisted and re-applied to every track. Pitch-preserving: the chain runs mpv's `scaletempo2` time-stretcher with a music-tuned window instead of mpv's speech-oriented automatic correction.
 - **Appearance** — light / dark / follow-system, and optional Material You colors from your wallpaper.
 - **Home screen widget** — a compact 3×1 bar: album art, current track and previous / play-pause / next without unlocking. The card fills the cell the launcher hands out and its contents stretch with it, so it looks the same whatever row height your launcher uses.
@@ -26,7 +26,16 @@ A local music player for Android, built with Flutter. Your files, on your phone 
 - **Stats ("Wrapped")** — total listening time, top tracks, and top artists, filterable by month, year, or all time.
 - **Time listened** — a separate stats category ranking tracks by the time you *actually* spent listening, measured from playback rather than inferred from play counts: a skipped track only counts for the part you heard, and playback speed counts as real time (a 1:00 track is 0:40 at 1.5× and 1:20 at 0.75×). Play counts use the recording's own timeline instead, so a track counts as played whatever speed it ran at.
 - **Year in review** — a contributions-style calendar heatmap of the year's listening, plus hours, active days, longest streak, busiest day and the year's top track/artist. The summary card renders to a PNG you can share.
-- **Backup & restore** — export the SQLite database anywhere; imports are staged and applied safely on the next launch.
+- **Backup & restore** — a single `.ewbackup` file includes the database, settings, EQ profiles, queue, library folders and cached artwork. Imports validate integrity, schema and references before staging; replacement is journaled and a safety copy can undo a restore. Legacy Electrowave `.db` exports remain supported. Optional weekly backups use a persisted Android folder grant and retain the latest five.
+- **Large libraries** — persisted folder lists, incremental size/date scanning, cancellation and progress, FTS5 indexed search, remembered sort direction and A–Z rails on tracks, albums and artists.
+- **Library tools** — long-press for bulk queue, playlist, tag and hide actions; album artist grouping; genre/year/decade browsing; library size/format summary; duplicate review. Music files are only changed by explicit tag edits.
+- **Portable files** — import/export M3U/M3U8 playlists and export stats as CSV or JSON. Unresolved playlist paths are reported.
+- **Ratings** - 0-5 stars, written to MP3/FLAC/WAV tags through the tag editor. Other formats keep ratings in the library.
+- **Private sessions** — temporarily stop recording plays, starts, skips and measured time.
+- **Audio** — named 10-band presets and speaker/headphones/Bluetooth profiles, mono audio, local headphone crossfeed, real decoded waveforms and ReplayGain 2.0 analysis for missing gains. Calculated gains stay in the library; sources stay unchanged. PCM WAV EQ and crossfeed use temporary 24-bit lossless playback copies because the bundled libmpv lacks the necessary converter/filter. EQ itself still runs inside mpv.
+- **Android controls** — Shuffle all / Resume / Favourites launcher shortcuts, a play/pause Quick Settings tile, 3×1 / 2×2 / 4×2 widgets, and an Android 13 monochrome icon.
+- **Optional gapless** — mpv receives only the current track and its staged successor. Dart retains manual-queue, shuffle, repeat and sleep-timer decisions. Disabled by default.
+- **Diagnostics** — bounded local error logs, manual log export, startup database checks and backup recovery. No upload or reporting service.
 
 ## Permissions
 
@@ -83,18 +92,28 @@ Non-obvious constraints — breaking these produces bugs that only show up after
   ```
 
   Paste that as the secret value. Do **not** use `certutil -encode`: it wraps the output in `-----BEGIN CERTIFICATE-----` lines, which `base64 -d` rejects. The workflow verifies the restored keystore with `keytool` and prints its size and SHA-256, so a mismatch fails at the restore step with a readable message instead of surfacing as a DER/ASN.1 parse error (`Tag number over 30 is not supported`) inside `:app:packageRelease`.
-- Run `dart run build_runner build` after editing the drift schema in `lib/core/database/database.dart`. The schema is at **v3**; `MigrationStrategy` adds `isFavorite`, `trackNumber`, `discNumber` and `year` (v2) and creates `listening_sessions` (v3), so existing installs upgrade in place.
+- Run `dart run build_runner build` after editing the drift schema in `lib/core/database/database.dart`. The schema is at **v6**; `MigrationStrategy` adds `isFavorite`, `trackNumber`, `discNumber` and `year` (v2) and creates `listening_sessions` (v3), so existing installs upgrade in place.
 - **`PlaybackHistory` and `ListeningSessions` measure different things and must not be merged.** Every stat built on `PlaybackHistory` multiplies its rows by the track's full `durationMs`, so a track skipped after ten seconds counts as a full listen — that is what "Top tracks" and the headline total have always meant. `ListeningSessions` sums position deltas the player actually emitted. The two disagree by design, and the gap is largest for anyone who skips a lot.
-- **EQ and ReplayGain run inside libmpv, not Android.** media_kit doesn't expose the Android audio session id, so the platform `AudioEffect` API (Equalizer/BassBoost) is unreachable. `applyAudioSettings` builds an mpv `af` chain of `equalizer` filters and sets mpv's own `replaygain` property instead — same behaviour on every platform, no session id needed.
+- **EQ and ReplayGain run inside libmpv, not Android.** media_kit doesn't expose the Android audio session id, so the platform `AudioEffect` API (Equalizer/BassBoost) is unreachable. `applyAudioSettings` builds an mpv `af` chain of `equalizer` filters and sets mpv's own `replaygain` property instead — no Android audio session id is needed.
 - Playback speed must be re-applied after every `Player.open()`; mpv resets it per file. The handler keeps `_desiredRate` for exactly that.
 - **The handler owns mpv's `af` chain outright.** media_kit's `setRate` only sets `speed` and leaves stretching to `audio-pitch-correction`, which inserts plain `scaletempo` at a 60 ms stride — audibly warbly on music. `_applyFilterChain` inserts a tuned `scaletempo2` itself (only when the rate is off 1.0×) and sets `audio-pitch-correction=no`, so exactly one stretcher is in the chain. `NativePlayer.setProperty` discards libmpv's return code, so `_probeStretchFilter` reads `af` back to find out whether a filter actually exists in this build — mpv rejects the entire list if one name is unknown.
 - **POST_NOTIFICATIONS is not optional on Android 13+, and granting it is not sufficient.** Without the permission the foreground service still starts and audio still plays, but the media notification and lock screen controls are dropped silently. Worse, the `com.example.electrowave.playback` *channel* can be switched off on its own — permission checks still answer "granted" while nothing is ever shown. `permission_handler` cannot see channel state, so `MainActivity` exposes an `electrowave/notifications` MethodChannel reporting `appEnabled` / `channelExists` / `channelBlocked`, and deep-links to `ACTION_CHANNEL_NOTIFICATION_SETTINGS`. Settings → Playback → *Playback notification* reports which of the three it is.
 - audio_service posts the notification **only on a `playing` false→true transition** (`enterPlayingState` → `internalStartForeground`); there is no other path that sets `notificationCreated`. So anything that publishes a stale `playing` value, or that calls `stop()` (which cancels the notification and stops the service), leaves the user with no controls until the next real play transition.
-- Albums are grouped by **album name alone**. Grouping by (album, artist) splits compilations and albums with featured guests into one row per artist; the artist column shows the single artist when there is one and 'Various artists' otherwise.
+- Albums are grouped by **album plus album-artist tag** when that tag exists. Untagged albums retain album-name grouping so compilations stay together; the display artist falls back to Various artists when appropriate.
 
-### Not implemented: gapless playback / crossfade
+### Validation
 
-`_loadAndPlay` opens one file at a time, so there is a short gap at every track change. Closing it properly means handing the queue to mpv's own playlist (`gapless-audio` only applies to mpv-internal transitions) while `PlayerController` still owns manual-queue priority, shuffle order and repeat — two things advancing the same queue, with the resync races that implies. That is the same area as the "playback dies mid-queue" bug fixed earlier, and it can't be validated without listening to a real device through sleep/doze cycles, so it was left alone deliberately rather than landed untested.
+Run `flutter analyze` and `flutter test` before a release; CI now enforces both. Migration tests rebuild historical schemas 1–5, backup tests exercise restore/undo/rejection/interrupted recovery, and the search test uses 10,500 tracks.
+
+The Android integration test uses 10,053 tracks, real PCM fixtures, native waveform/loudness decoding, incremental scans, private-session recording, audio filters and two-track queue transitions:
+
+```powershell
+flutter test integration_test/app_test.dart -d emulator-5554 --reporter expanded *> emulator-tests.log
+```
+
+Run `scripts/monitor-emulator-test.ps1` in another terminal to switch the **emulator** screen off and force doze during its sleep test. The script refuses physical devices and restores emulator power state afterwards. Grant the test installation's notification/audio permissions first so a system permission dialog does not cover the test.
+
+See [the validation report](docs/VALIDATION.md) for results and hardware checks that still require a real phone.
 
 ## License
 

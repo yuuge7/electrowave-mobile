@@ -16,8 +16,12 @@ class TrackTile extends ConsumerWidget {
     this.showAlbum = true,
     this.missing = false,
     this.trailingExtra,
+    this.onLongPress,
+    this.selected = false,
   });
 
+  final VoidCallback? onLongPress;
+  final bool selected;
   final Track track;
   final VoidCallback onTap;
   final bool showAlbum;
@@ -31,7 +35,8 @@ class TrackTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final current = ref.watch(
-        playerControllerProvider.select((s) => s.current?.id == track.id));
+      playerControllerProvider.select((s) => s.current?.id == track.id),
+    );
 
     final subtitle = showAlbum && track.album.isNotEmpty
         ? '${track.artist} · ${track.album}'
@@ -40,15 +45,19 @@ class TrackTile extends ConsumerWidget {
     return ListTile(
       onTap: missing
           ? () => ScaffoldMessenger.of(context)
-            ..hideCurrentSnackBar()
-            ..showSnackBar(
-                SnackBar(content: Text('File missing: ${track.filePath}')))
+              ..hideCurrentSnackBar()
+              ..showSnackBar(
+                SnackBar(content: Text('File missing: ${track.filePath}')),
+              )
           : onTap,
-      onLongPress: () => showTrackContextMenu(context, track),
-      leading: ArtThumb(
-        artPath: track.albumArtPath,
-        seed: track.album.isNotEmpty ? track.album : track.title,
-      ),
+      selected: selected,
+      onLongPress: onLongPress ?? () => showTrackContextMenu(context, track),
+      leading: selected
+          ? const Icon(Icons.check_circle)
+          : ArtThumb(
+              artPath: track.albumArtPath,
+              seed: track.album.isNotEmpty ? track.album : track.title,
+            ),
       title: Text(
         track.title,
         maxLines: 1,
@@ -56,7 +65,8 @@ class TrackTile extends ConsumerWidget {
         style: current
             ? TextStyle(
                 color: theme.colorScheme.primary,
-                fontWeight: FontWeight.w600)
+                fontWeight: FontWeight.w600,
+              )
             : null,
       ),
       subtitle: Row(
@@ -64,20 +74,24 @@ class TrackTile extends ConsumerWidget {
           if (missing)
             Padding(
               padding: const EdgeInsets.only(right: 4),
-              child: Icon(Icons.error_outline,
-                  size: 14, color: theme.colorScheme.error),
+              child: Icon(
+                Icons.error_outline,
+                size: 14,
+                color: theme.colorScheme.error,
+              ),
             ),
           Expanded(
-            child: Text(subtitle,
-                maxLines: 1, overflow: TextOverflow.ellipsis),
+            child: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
           ),
         ],
       ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(formatDurationMs(track.durationMs),
-              style: theme.textTheme.bodySmall),
+          Text(
+            formatDurationMs(track.durationMs),
+            style: theme.textTheme.bodySmall,
+          ),
           ?trailingExtra,
           IconButton(
             icon: const Icon(Icons.more_vert),

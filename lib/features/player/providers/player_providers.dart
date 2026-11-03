@@ -11,6 +11,7 @@ import '../services/listening_meter.dart';
 import '../services/playback_persistence.dart';
 import '../services/widget_service.dart';
 import 'sleep_timer_provider.dart';
+import '../../settings/providers/settings_providers.dart';
 
 /// Overridden in main() with the handler returned by AudioService.init().
 final audioHandlerProvider = Provider<ElectrowaveAudioHandler>(
@@ -19,6 +20,8 @@ final audioHandlerProvider = Provider<ElectrowaveAudioHandler>(
 
 /// Transient user-facing playback messages (missing files, etc.).
 final playerMessageProvider = StateProvider<String?>((ref) => null);
+
+final privateSessionProvider = StateProvider<bool>((ref) => false);
 
 enum RepeatMode { off, all, one }
 
@@ -99,12 +102,18 @@ class PlayerController extends Notifier<PlayerQueueState> {
 
   /// Plays already booked for the current load of the current track.
   int _playsBooked = 0;
+  DateTime _lastWidget = DateTime.fromMillisecondsSinceEpoch(0);
+  bool _startBooked = false;
+  bool _loading = false;
+  Future<void> _transition = Future.value();
   StreamSubscription<Duration>? _positionSub;
+  StreamSubscription<Track?>? _liveTrackSub;
 
   // Measured listening time. Derived from how far the position actually
   // advanced rather than from wall-clock time, so pauses cost nothing and the
   // figure means "this much audio was heard" at any playback speed.
   int? _listenSessionId;
+  Future<void> _listenWrites = Future.value();
   final ListeningMeter _meter = ListeningMeter();
   int _savedListenedMs = 0;
 
@@ -115,13 +124,26 @@ class PlayerController extends Notifier<PlayerQueueState> {
 
   @override
   PlayerQueueState build() {
-    _handler.onSkipToNext = () => next();
+    final handler = _handler;
+    handler.onSkipToNext = () => next();
     _handler.onSkipToPrevious = () => previous();
     _handler.onCompleted = _handleCompletion;
+    _handler.onGaplessAdvanced = _acceptGapless;
+    listenSelf((_, _) {
+      if (!_loading) unawaited(_prepareNext());
+    });
+    ref.listen(settingsControllerProvider, (_, _) => unawaited(_prepareNext()));
+    ref.listen(sleepTimerProvider, (_, _) => unawaited(_prepareNext()));
 
     _positionSub = _handler.player.stream.position.listen(_onPosition);
     ref.onDispose(() => _positionSub?.cancel());
-    ref.onDispose(() => unawaited(_flushListening()));
+    ref.onDispose(() => _liveTrackSub?.cancel());
+    ref.onDispose(() {
+      handler.onSkipToNext = null;
+      handler.onSkipToPrevious = null;
+      handler.onCompleted = null;
+      handler.onGaplessAdvanced = null;
+    });
 
     // Keep the home screen widget in step with play/pause. Track changes push
     // their own update from _loadAndPlay.
@@ -212,6 +234,13 @@ class PlayerController extends Notifier<PlayerQueueState> {
   /// before closing the app).
   Future<void> next({bool auto = false, bool play = true}) async {
     final s = state;
+    if (!auto &&
+        s.current != null &&
+        _meter.listenedMs >= 1000 &&
+        _handler.position.inMilliseconds < s.current!.durationMs - 2000 &&
+        !ref.read(privateSessionProvider)) {
+      await _db.recordSkip(s.current!.id);
+    }
 
     if (auto && s.repeat == RepeatMode.one) {
       if (s.current != null) await _loadAndPlay(s.current!, play: play);
@@ -304,6 +333,26 @@ class PlayerController extends Notifier<PlayerQueueState> {
     unawaited(_saveState());
   }
 
+  void addManyToQueue(List<Track> tracks) {
+    state = state.copyWith(manualQueue: [...state.manualQueue, ...tracks]);
+    unawaited(_saveState());
+  }
+
+  void clearQueue() {
+    state = state.copyWith(
+      manualQueue: [],
+      context: state.current == null ? [] : [state.current!],
+      contextIndex: state.current == null ? -1 : 0,
+      shuffleOrder: state.current == null ? [] : [0],
+    );
+    unawaited(_saveState());
+  }
+
+  Future<void> flushState() async {
+    await _flushListening();
+    await _saveState();
+  }
+
   void addToQueue(Track track) {
     state = state.copyWith(manualQueue: [...state.manualQueue, track]);
     unawaited(_saveState());
@@ -383,14 +432,22 @@ class PlayerController extends Notifier<PlayerQueueState> {
   // Restore
   // ---------------------------------------------------------------------
 
-  Future<void> restore() async {
+  Future<void>? _restoring;
+  Future<void> restore() => _restoring ??= _restore();
+  Future<void> _restore() async {
     final saved = await _persistence.load();
-    if (saved == null || saved.currentTrackId == null) return;
+    if (saved == null || saved.currentTrackId == null) {
+      await _widgets.update(playing: false);
+      return;
+    }
 
     final contextTracks = await _db.tracksByIds(saved.contextTrackIds);
     final manualTracks = await _db.tracksByIds(saved.manualQueueIds);
     final current = await _db.trackById(saved.currentTrackId!);
-    if (current == null || current.isDeleted) return;
+    if (current == null || current.isDeleted) {
+      await _widgets.update(playing: false);
+      return;
+    }
 
     var contextIndex = saved.contextIndex;
     if (contextIndex >= contextTracks.length) {
@@ -418,6 +475,7 @@ class PlayerController extends Notifier<PlayerQueueState> {
           .values[saved.repeatIndex.clamp(0, RepeatMode.values.length - 1)],
     );
 
+    _watchCurrent(current);
     unawaited(_widgets.update(track: current, playing: false));
 
     if (!await trackFileExists(current)) return;
@@ -443,6 +501,93 @@ class PlayerController extends Notifier<PlayerQueueState> {
   // Internals
   // ---------------------------------------------------------------------
 
+  void _watchCurrent(Track track) {
+    _liveTrackSub?.cancel();
+    _liveTrackSub = _db.watchTrackById(track.id).listen((live) {
+      if (!ref.mounted || live == null || state.current?.id != live.id) return;
+      if (state.current != live) state = state.copyWith(current: live);
+      unawaited(
+        _widgets.update(
+          track: live,
+          playing: _handler.playing,
+          positionMs: _handler.position.inMilliseconds,
+        ),
+      );
+    });
+  }
+
+  Future<void> setPrivateSession(bool value) async {
+    await _resetListening();
+    ref.read(privateSessionProvider.notifier).state = value;
+    _playsBooked = 0;
+    _startBooked = false;
+  }
+
+  Track? _successor() {
+    final s = state;
+    if (!ref.read(settingsControllerProvider).gapless ||
+        ref.read(sleepTimerProvider)?.endOfTrack == true ||
+        s.current == null) {
+      return null;
+    }
+    if (s.repeat == RepeatMode.one) return s.current;
+    if (s.manualQueue.isNotEmpty) return s.manualQueue.first;
+    final index = _nextContextIndex(s, wrap: s.repeat == RepeatMode.all);
+    return index == null ? null : s.context[index];
+  }
+
+  Future<void> _prepareNext() async {
+    if (!ref.mounted) return;
+    final handler = _handler;
+    final next = _successor();
+    await handler.prepareNext(
+      next != null && await trackFileExists(next) ? next : null,
+    );
+  }
+
+  Future<void> _acceptGapless(Track track) async {
+    _transition = _transition.then((_) async {
+      if (!ref.mounted) return;
+      _loading = true;
+      await _resetListening();
+      if (!ref.mounted) return;
+      _playsBooked = 0;
+      _startBooked = false;
+      final s = state;
+      if (s.repeat == RepeatMode.one) {
+        state = s.copyWith(current: track);
+      } else if (s.manualQueue.isNotEmpty &&
+          s.manualQueue.first.id == track.id) {
+        state = s.copyWith(
+          current: track,
+          manualQueue: s.manualQueue.skip(1).toList(),
+          fromManualQueue: true,
+        );
+      } else {
+        final index = _nextContextIndex(s, wrap: s.repeat == RepeatMode.all);
+        if (index == null || s.context[index].id != track.id) {
+          _loading = false;
+          // A user queue change may have overtaken an old native event.
+          // Never restart audio in response to that obsolete event.
+          await _prepareNext();
+          return;
+        }
+        state = s.copyWith(
+          current: track,
+          contextIndex: index,
+          fromManualQueue: false,
+        );
+      }
+      _loading = false;
+      _watchCurrent(track);
+      await _handler.applyCalculatedGain(track);
+      unawaited(_saveState());
+      unawaited(_widgets.update(track: track, playing: true));
+      await _prepareNext();
+    });
+    return _transition;
+  }
+
   Future<void> _loadAndPlay(Track track, {bool play = true}) async {
     if (!await trackFileExists(track)) {
       ref.read(playerMessageProvider.notifier).state =
@@ -457,13 +602,24 @@ class PlayerController extends Notifier<PlayerQueueState> {
       return;
     }
     _playsBooked = 0;
+    _startBooked = false;
+    _loading = true;
     // Closes the outgoing track's session while it is still `state.current`,
     // so its time is booked against the right track.
     await _resetListening();
     state = state.copyWith(current: track);
-    await _handler.loadTrack(track, autoPlay: play);
+    _watchCurrent(track);
+    try {
+      await _handler.loadTrack(track, autoPlay: play);
+    } finally {
+      _loading = false;
+    }
+    if (!ref.mounted) return;
+    await _prepareNext();
     unawaited(_saveState());
-    unawaited(_widgets.update(track: track, playing: _handler.playing));
+    if (ref.mounted) {
+      unawaited(_widgets.update(track: track, playing: _handler.playing));
+    }
   }
 
   Future<void> _handleCompletion() async {
@@ -528,7 +684,7 @@ class PlayerController extends Notifier<PlayerQueueState> {
   // filter-chain rebuild would also do.
   void _onPosition(Duration position) {
     final track = state.current;
-    if (track == null) return;
+    if (track == null || _loading || ref.read(privateSessionProvider)) return;
 
     final duration = track.durationMs > 0
         ? Duration(milliseconds: track.durationMs)
@@ -551,11 +707,29 @@ class PlayerController extends Notifier<PlayerQueueState> {
     // that goes past, so a replay still counts while a scrub cannot fake one.
     final nextPlayAtMs =
         scrobbleThresholdMs(duration) + _playsBooked * duration.inMilliseconds;
+    if (!_startBooked && _meter.listenedMs >= 1000) {
+      _startBooked = true;
+      unawaited(_db.recordStart(track.id));
+    }
     if (_meter.heardMs >= nextPlayAtMs) {
       _playsBooked++;
       unawaited(_db.recordPlay(track.id));
     }
 
+    if (DateTime.now().difference(_lastWidget) >= const Duration(seconds: 10)) {
+      _lastWidget = DateTime.now();
+      unawaited(
+        _db
+            .trackById(track.id)
+            .then(
+              (live) => _widgets.update(
+                track: live ?? track,
+                playing: _handler.playing,
+                positionMs: position.inMilliseconds,
+              ),
+            ),
+      );
+    }
     unawaited(_persistence.saveThrottled(_snapshot()));
   }
 
@@ -565,8 +739,15 @@ class PlayerController extends Notifier<PlayerQueueState> {
 
   /// Persists the running total. Idempotent — it writes an absolute value, so
   /// calling it more often than needed only costs a write.
-  Future<void> _flushListening() async {
+  Future<void> _flushListening() {
+    _listenWrites = _listenWrites.then((_) => _flushListeningNow());
+    return _listenWrites;
+  }
+
+  Future<void> _flushListeningNow() async {
+    if (!ref.mounted) return;
     _lastListenFlush = DateTime.now();
+    if (ref.read(privateSessionProvider)) return;
     final track = state.current;
     final listenedMs = _meter.listenedMs;
     if (track == null || listenedMs == _savedListenedMs) return;
@@ -602,7 +783,8 @@ class PlayerController extends Notifier<PlayerQueueState> {
     );
   }
 
-  Future<void> _saveState() => _persistence.save(_snapshot());
+  Future<void> _saveState() =>
+      ref.mounted ? _persistence.save(_snapshot()) : Future.value();
 }
 
 // ---------------------------------------------------------------------------

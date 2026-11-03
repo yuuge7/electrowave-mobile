@@ -22,25 +22,37 @@ class _TagEditorDialog extends ConsumerStatefulWidget {
 }
 
 class _TagEditorDialogState extends ConsumerState<_TagEditorDialog> {
-  late final TextEditingController _title =
-      TextEditingController(text: widget.track.title);
-  late final TextEditingController _artist =
-      TextEditingController(text: widget.track.artist);
-  late final TextEditingController _album =
-      TextEditingController(text: widget.track.album);
-  late final TextEditingController _genre =
-      TextEditingController(text: widget.track.genre ?? '');
+  late final TextEditingController _title = TextEditingController(
+    text: widget.track.title,
+  );
+  late final TextEditingController _artist = TextEditingController(
+    text: widget.track.artist,
+  );
+  late final TextEditingController _album = TextEditingController(
+    text: widget.track.album,
+  );
+  late final TextEditingController _genre = TextEditingController(
+    text: widget.track.genre ?? '',
+  );
   late final TextEditingController _trackNumber = TextEditingController(
-      text: widget.track.trackNumber?.toString() ?? '');
-  late final TextEditingController _discNumber =
-      TextEditingController(text: widget.track.discNumber?.toString() ?? '');
-  late final TextEditingController _year =
-      TextEditingController(text: widget.track.year?.toString() ?? '');
+    text: widget.track.trackNumber?.toString() ?? '',
+  );
+  late final TextEditingController _discNumber = TextEditingController(
+    text: widget.track.discNumber?.toString() ?? '',
+  );
+  late final TextEditingController _year = TextEditingController(
+    text: widget.track.year?.toString() ?? '',
+  );
 
   bool _saving = false;
+  late double _rating = widget.track.rating.toDouble();
+  late final _albumArtist = TextEditingController(
+    text: widget.track.albumArtist ?? '',
+  );
 
   @override
   void dispose() {
+    _albumArtist.dispose();
     _title.dispose();
     _artist.dispose();
     _album.dispose();
@@ -64,19 +76,26 @@ class _TagEditorDialogState extends ConsumerState<_TagEditorDialog> {
     final messenger = ScaffoldMessenger.of(context);
 
     final edit = TagEdit(
+      albumArtist: _albumArtist.text.trim(),
       title: _title.text.trim(),
       artist: _artist.text.trim().isEmpty
           ? kUnknownArtist
           : _artist.text.trim(),
-      album:
-          _album.text.trim().isEmpty ? 'Unknown album' : _album.text.trim(),
+      album: _album.text.trim().isEmpty ? 'Unknown album' : _album.text.trim(),
       genre: _genre.text.trim(),
       trackNumber: int.tryParse(_trackNumber.text.trim()),
       discNumber: int.tryParse(_discNumber.text.trim()),
       year: int.tryParse(_year.text.trim()),
     );
 
-    final error = await ref.read(tagWriterProvider).apply(widget.track, edit);
+    var error = await ref.read(tagWriterProvider).apply(widget.track, edit);
+    if (_rating.round() != widget.track.rating) {
+      error =
+          await ref
+              .read(tagWriterProvider)
+              .apply(widget.track, TagEdit(rating: _rating.round())) ??
+          error;
+    }
 
     navigator.pop();
     messenger
@@ -93,6 +112,22 @@ class _TagEditorDialogState extends ConsumerState<_TagEditorDialog> {
           mainAxisSize: MainAxisSize.min,
           spacing: 12,
           children: [
+            TextField(
+              controller: _albumArtist,
+              decoration: const InputDecoration(labelText: 'Album artist'),
+            ),
+            Text('Rating: ${_rating.round()} / 5'),
+            Slider(
+              value: _rating,
+              min: 0,
+              max: 5,
+              divisions: 5,
+              label: '${_rating.round()} stars',
+              onChanged: _saving ? null : (v) => setState(() => _rating = v),
+            ),
+            const Text(
+              'Ratings write to MP3, FLAC and WAV tags. Other formats keep the rating in the library.',
+            ),
             TextField(
               controller: _title,
               decoration: const InputDecoration(labelText: 'Title'),

@@ -1,13 +1,42 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
+import 'package:audio_metadata_reader/audio_metadata_reader.dart';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart' hide Track;
 
 import '../../../core/database/database.dart';
+import '../../../core/services/local_log.dart';
 import '../../settings/services/settings_persistence.dart';
+
+double? _readEmbeddedGain((String, bool) input) {
+  try {
+    final raw = readAllMetadata(File(input.$1), getImage: false);
+    final album = input.$2;
+    String? value;
+    if (raw is VorbisMetadata) {
+      value =
+          (album ? raw.replayGainAlbumGain : raw.replayGainTrackGain)
+              .firstOrNull ??
+          raw.replayGainTrackGain.firstOrNull;
+    } else if (raw is Mp3Metadata) {
+      final key = album ? 'replaygain_album_gain' : 'replaygain_track_gain';
+      value = raw.customMetadata.entries
+          .where((e) => e.key.toLowerCase() == key)
+          .firstOrNull
+          ?.value;
+    }
+    if (value == null) return null;
+    final match = RegExp(r'[+-]?\d+(?:\.\d+)?').firstMatch(value);
+    return match == null ? null : double.tryParse(match[0]!);
+  } catch (_) {
+    return null;
+  }
+}
 
 /// Bridges media_kit playback to Android via audio_service:
 /// media-style notification, lock screen controls, headset/bluetooth
@@ -16,6 +45,7 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
   ElectrowaveAudioHandler() {
     _player = Player();
     _wireStreams();
+    _player.stream.error.listen((error) => LocalLog.record(error));
     unawaited(_configureSession());
   }
 
@@ -28,6 +58,73 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
 
   /// Fired when the current file finished playing.
   Future<void> Function()? onCompleted;
+
+  String? _stagedUri;
+  Future<String> _audioSource(Track track) async {
+    final mix =
+        _audioSettings?.crossfeed == true && _audioSettings?.mono != true;
+    final convert =
+        _audioSettings?.eqEnabled == true &&
+        track.filePath.toLowerCase().endsWith('.wav');
+    if (!Platform.isAndroid || (!mix && !convert)) return track.filePath;
+    return await const MethodChannel(
+          'electrowave/platform',
+        ).invokeMethod<String>('crossfeedFile', {
+          'path': track.filePath,
+          'mix': mix,
+        }) ??
+        track.filePath;
+  }
+
+  Track? _stagedNext;
+  Track? _currentTrack;
+  Future<void> _gaplessWork = Future.value();
+  bool _opening = false;
+  bool _gaplessAdvancing = false;
+  Future<void> Function(Track)? onGaplessAdvanced;
+  Future<void> prepareNext(Track? next) {
+    _gaplessWork = _gaplessWork
+        .then((_) async {
+          if (_opening) return;
+          if (_stagedNext?.id == next?.id) return;
+          // Only one successor is ever given to mpv. Dart retains queue ownership.
+          final medias = _player.state.playlist.medias;
+          for (
+            var i = medias.length - 1;
+            i > _player.state.playlist.index;
+            i--
+          ) {
+            await _player.remove(i);
+          }
+          _stagedNext = next;
+          if (next != null) {
+            _stagedUri = await _audioSource(next);
+            await _player.add(Media(_stagedUri!));
+          } else {
+            _stagedUri = null;
+          }
+        })
+        .catchError((Object e) {
+          LocalLog.record(e);
+        });
+    return _gaplessWork;
+  }
+
+  void _publishTrack(Track track) {
+    _currentTrack = track;
+    mediaItem.add(
+      MediaItem(
+        id: track.filePath,
+        title: track.title,
+        artist: track.artist,
+        album: track.album,
+        duration: Duration(milliseconds: track.durationMs),
+        artUri: track.albumArtPath == null
+            ? null
+            : Uri.file(track.albumArtPath!),
+      ),
+    );
+  }
 
   AudioSession? _session;
   bool _playingBeforeInterruption = false;
@@ -185,8 +282,39 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
         mediaItem.add(item.copyWith(duration: duration));
       }
     });
+    _player.stream.playlist.listen((playlist) async {
+      final next = _stagedNext;
+      if (_opening ||
+          next == null ||
+          playlist.index != 1 ||
+          playlist.medias.length < 2 ||
+          playlist.medias[1].uri != _stagedUri) {
+        return;
+      }
+      _stagedNext = null;
+      _gaplessAdvancing = true;
+      try {
+        _publishTrack(next);
+        await _player.remove(0);
+        await onGaplessAdvanced?.call(next);
+        if (_desiredRate != 1) await _player.setRate(_desiredRate);
+        _broadcast();
+      } finally {
+        _gaplessAdvancing = false;
+      }
+    });
     _player.stream.completed.listen((completed) async {
-      if (completed) await onCompleted?.call();
+      // eof-reached can briefly fire during a native playlist transition.
+      // The staged successor owns that boundary; Dart must never advance it twice.
+      if (!completed || _opening || _gaplessAdvancing || _stagedNext != null) {
+        return;
+      }
+      final native = _native;
+      if (native != null && await native.getProperty('eof-reached') != 'yes') {
+        return;
+      }
+      if (_opening || _gaplessAdvancing || _stagedNext != null) return;
+      await onCompleted?.call();
     });
   }
 
@@ -238,9 +366,41 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
             : null,
       ),
     );
-    await _player.open(Media(track.filePath), play: false);
+    _currentTrack = track;
+    _opening = true;
+    await _player.pause();
+    await _gaplessWork;
+    _stagedNext = null;
+    try {
+      await _native?.setProperty('ad-lavc-o', 'request_sample_fmt=s32p');
+      await _player.open(Media(await _audioSource(track)), play: false);
+    } finally {
+      _opening = false;
+    }
     if (_desiredRate != 1.0) await _player.setRate(_desiredRate);
+    await applyCalculatedGain(track);
     if (autoPlay) await _resumePlayback();
+  }
+
+  Future<void> applyCalculatedGain(Track track) async {
+    final native = _native;
+    if (native == null) return;
+    // mpv applies embedded ReplayGain itself; calculated fallback is for files without tags.
+    double? value;
+    if (_audioSettings?.replayGain != ReplayGainMode.off) {
+      value = track.replayGainDb;
+      // Derived lossless files have no source tags; retain their normalization.
+      if (_audioSettings?.crossfeed == true ||
+          (_audioSettings?.eqEnabled == true &&
+              track.filePath.toLowerCase().endsWith('.wav'))) {
+        final input = (
+          track.filePath,
+          _audioSettings?.replayGain == ReplayGainMode.album,
+        );
+        value = await Isolate.run(() => _readEmbeddedGain(input)) ?? value;
+      }
+    }
+    await native.setProperty('replaygain-fallback', (value ?? 0).toString());
   }
 
   Future<bool> activateSession() async {
@@ -454,6 +614,7 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
 
     final settings = _audioSettings;
     final filters = <String>[];
+    // Preserve decoder channel layouts: EQ must precede mpv format conversion.
 
     if (settings != null && settings.eqEnabled) {
       for (var i = 0; i < kEqBandFrequencies.length; i++) {
@@ -463,7 +624,7 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
         // Skip inaudible bands to keep the chain short.
         if (gain.abs() < 0.1) continue;
         filters.add(
-          'equalizer=f=${kEqBandFrequencies[i]}:t=o:w=2'
+          'equalizer=f=${kEqBandFrequencies[i]}:t=o:w=1'
           ':g=${gain.toStringAsFixed(1)}',
         );
       }
@@ -484,6 +645,9 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
       );
     }
 
+    if (settings?.mono == true) {
+      filters.add('format=channels=mono');
+    }
     if (_desiredRate != 1.0 && _stretchFilter != null) {
       filters.add(_stretchFilter!);
     }
@@ -497,12 +661,33 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
 
   /// Apply EQ, skip-silence, fades and ReplayGain from [settings].
   Future<void> applyAudioSettings(AppSettings settings) async {
+    final rerender =
+        _currentTrack != null &&
+        (_audioSettings?.eqEnabled != settings.eqEnabled ||
+            _audioSettings?.crossfeed != settings.crossfeed ||
+            (settings.crossfeed && _audioSettings?.mono != settings.mono));
     _audioSettings = settings;
     _fadeOnPause = settings.fadeOnPause;
     final native = _native;
     if (native == null) return;
 
     await _applyFilterChain();
+    if (rerender) {
+      final position = _player.state.position;
+      final wasPlaying = _player.state.playing;
+      final next = _stagedNext;
+      await loadTrack(_currentTrack!, autoPlay: false);
+      if (position > Duration.zero && position < _player.state.duration) {
+        await _player.seek(position);
+      }
+      if (wasPlaying) await _resumePlayback();
+      await prepareNext(next);
+    }
+    if (_currentTrack != null) await applyCalculatedGain(_currentTrack!);
+    await native.setProperty(
+      'gapless-audio',
+      settings.gapless ? 'yes' : 'weak',
+    );
     try {
       await native.setProperty('replaygain', switch (settings.replayGain) {
         ReplayGainMode.off => 'no',
@@ -518,10 +703,16 @@ class ElectrowaveAudioHandler extends BaseAudioHandler with SeekHandler {
 
   bool get playing => _player.state.playing;
 
-  Future<void> dispose() {
+  Future<void> dispose() async {
+    _fadeToken++;
+    _opening = true;
+    _stagedNext = null;
+    onCompleted = null;
+    onGaplessAdvanced = null;
     _idleStopTimer?.cancel();
     _inactivityTimer?.cancel();
-    return _player.dispose();
+    await _gaplessWork;
+    await _player.dispose();
   }
 }
 

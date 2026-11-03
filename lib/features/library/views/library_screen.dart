@@ -11,6 +11,9 @@ import '../../../shared/widgets/track_tile.dart';
 import '../providers/browse_providers.dart';
 import '../providers/library_providers.dart';
 import 'browse_views.dart';
+import '../widgets/bulk_actions.dart';
+import '../../../shared/widgets/alphabet_list.dart';
+import 'track_list_screen.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
   const LibraryScreen({super.key});
@@ -22,8 +25,10 @@ class LibraryScreen extends ConsumerStatefulWidget {
 class _LibraryScreenState extends ConsumerState<LibraryScreen>
     with SingleTickerProviderStateMixin {
   final _searchController = TextEditingController();
-  late final TabController _tabController =
-      TabController(length: 4, vsync: this);
+  late final TabController _tabController = TabController(
+    length: 6,
+    vsync: this,
+  );
 
   @override
   void dispose() {
@@ -33,14 +38,16 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
   }
 
   Future<void> _addFolder() async {
-    final ok =
-        await ref.read(scanControllerProvider.notifier).pickAndScanFolder();
+    final ok = await ref
+        .read(scanControllerProvider.notifier)
+        .pickAndScanFolder();
     if (!ok && mounted) context.push('/permission');
   }
 
   Future<void> _addFiles() async {
-    final ok =
-        await ref.read(scanControllerProvider.notifier).pickAndScanFiles();
+    final ok = await ref
+        .read(scanControllerProvider.notifier)
+        .pickAndScanFiles();
     if (!ok && mounted) context.push('/permission');
   }
 
@@ -68,6 +75,16 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
       appBar: AppBar(
         title: const Text('Library'),
         actions: [
+          IconButton(
+            tooltip: 'Reverse sort direction',
+            icon: Icon(
+              ref.watch(libraryDescendingProvider) ? Icons.south : Icons.north,
+            ),
+            onPressed: () =>
+                ref.read(libraryDescendingProvider.notifier).state = !ref.read(
+                  libraryDescendingProvider,
+                ),
+          ),
           PopupMenuButton<LibrarySort>(
             icon: const Icon(Icons.sort),
             tooltip: 'Sort library',
@@ -75,14 +92,16 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
             onSelected: (value) =>
                 ref.read(librarySortProvider.notifier).state = value,
             itemBuilder: (context) => const [
+              PopupMenuItem(value: LibrarySort.title, child: Text('Title')),
+              PopupMenuItem(value: LibrarySort.artist, child: Text('Artist')),
               PopupMenuItem(
-                  value: LibrarySort.title, child: Text('Title')),
+                value: LibrarySort.dateAdded,
+                child: Text('Date added'),
+              ),
               PopupMenuItem(
-                  value: LibrarySort.artist, child: Text('Artist')),
-              PopupMenuItem(
-                  value: LibrarySort.dateAdded, child: Text('Date added')),
-              PopupMenuItem(
-                  value: LibrarySort.playCount, child: Text('Play count')),
+                value: LibrarySort.playCount,
+                child: Text('Play count'),
+              ),
             ],
           ),
           PopupMenuButton<String>(
@@ -113,24 +132,27 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
                         tooltip: 'Clear search',
                         onPressed: () {
                           _searchController.clear();
-                          ref
-                              .read(librarySearchInputProvider.notifier)
-                              .state = '';
+                          ref.read(librarySearchInputProvider.notifier).state =
+                              '';
                         },
                       ),
                   ],
-                  onChanged: (value) => ref
-                      .read(librarySearchInputProvider.notifier)
-                      .state = value,
+                  onChanged: (value) =>
+                      ref.read(librarySearchInputProvider.notifier).state =
+                          value,
                 ),
               ),
               TabBar(
                 controller: _tabController,
+                isScrollable: true,
+                tabAlignment: TabAlignment.start,
                 tabs: const [
                   Tab(text: 'Tracks'),
                   Tab(text: 'Albums'),
                   Tab(text: 'Artists'),
                   Tab(text: 'Folders'),
+                  Tab(text: 'Genres'),
+                  Tab(text: 'Years'),
                 ],
               ),
             ],
@@ -141,13 +163,25 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
         children: [
           if (scan.running)
             ListTile(
-              leading: const SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(strokeWidth: 2),
+              leading: const Icon(Icons.folder_open),
+              title: Text('Scanning ${scan.processed}/${scan.total}'),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    scan.folder ?? 'Finding files',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  LinearProgressIndicator(
+                    value: scan.total > 0 ? scan.processed / scan.total : null,
+                  ),
+                ],
               ),
-              title: Text('Scanning… ${scan.processed}/${scan.total}'),
-              dense: true,
+              trailing: TextButton(
+                onPressed: ref.read(scanControllerProvider.notifier).cancel,
+                child: const Text('Cancel'),
+              ),
             ),
           Expanded(
             child: TabBarView(
@@ -163,6 +197,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
                 const AlbumsGrid(),
                 const ArtistsList(),
                 const FoldersList(),
+                const MetadataBrowse(years: false),
+                const MetadataBrowse(years: true),
               ],
             ),
           ),
@@ -204,19 +240,41 @@ class _TracksTab extends ConsumerWidget {
         }
         return Column(
           children: [
-            const _ShortcutsRow(),
+            if (ref.watch(librarySelectionProvider).isNotEmpty)
+              BulkActions(tracks: tracks)
+            else
+              const _ShortcutsRow(),
             const Divider(height: 1),
             Expanded(
-              child: ListView.builder(
-                itemCount: tracks.length,
+              child: AlphabetList(
+                showRail: ref.watch(librarySortProvider) == LibrarySort.title,
+                labels: tracks.map((t) => t.title).toList(),
                 itemBuilder: (context, index) {
                   final track = tracks[index];
                   return TrackTile(
                     track: track,
+                    selected: ref
+                        .watch(librarySelectionProvider)
+                        .contains(track.id),
+                    onLongPress: () =>
+                        ref.read(librarySelectionProvider.notifier).state = {
+                          ...ref.read(librarySelectionProvider),
+                          track.id,
+                        },
                     missing: missing.contains(track.id),
-                    onTap: () => ref
-                        .read(playerControllerProvider.notifier)
-                        .playFromList(track, tracks, 'Library'),
+                    onTap: () {
+                      final ids = ref.read(librarySelectionProvider);
+                      if (ids.isNotEmpty) {
+                        final next = {...ids};
+                        if (!next.add(track.id)) next.remove(track.id);
+                        ref.read(librarySelectionProvider.notifier).state =
+                            next;
+                      } else {
+                        ref
+                            .read(playerControllerProvider.notifier)
+                            .playFromList(track, tracks, 'Library');
+                      }
+                    },
                   );
                 },
               ),
@@ -262,15 +320,12 @@ class _ShortcutsRow extends ConsumerWidget {
             const SizedBox(height: 24, child: VerticalDivider(width: 1)),
           for (final list in SmartList.values)
             ActionChip(
-              avatar: Icon(
-                switch (list) {
-                  SmartList.favorites => Icons.favorite,
-                  SmartList.recentlyAdded => Icons.new_releases_outlined,
-                  SmartList.recentlyPlayed => Icons.history,
-                  SmartList.mostPlayed => Icons.trending_up,
-                },
-                size: 18,
-              ),
+              avatar: Icon(switch (list) {
+                SmartList.favorites => Icons.favorite,
+                SmartList.recentlyAdded => Icons.new_releases_outlined,
+                SmartList.recentlyPlayed => Icons.history,
+                SmartList.mostPlayed => Icons.trending_up,
+              }, size: 18),
               label: Text(list.label),
               onPressed: () => context.push('/smart/${list.name}'),
             ),
@@ -297,14 +352,16 @@ class _EmptyLibrary extends StatelessWidget {
       return const EmptyStateView(
         icon: Icons.search_off,
         title: 'No matches',
-        message: 'Nothing in your library matches that title, artist or '
+        message:
+            'Nothing in your library matches that title, artist or '
             'album. Try a shorter search.',
       );
     }
     return EmptyStateView(
       icon: Icons.library_music_outlined,
       title: 'Your library is empty',
-      message: 'Point Electrowave at the folder your music lives in. It reads '
+      message:
+          'Point Electrowave at the folder your music lives in. It reads '
           'tags and album art in place — nothing is copied or uploaded.',
       action: FilledButton.icon(
         onPressed: onAddFolder,
@@ -316,6 +373,50 @@ class _EmptyLibrary extends StatelessWidget {
         icon: const Icon(Icons.audio_file),
         label: const Text('Pick individual files'),
       ),
+    );
+  }
+}
+
+class MetadataBrowse extends ConsumerWidget {
+  const MetadataBrowse({super.key, required this.years});
+  final bool years;
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tracks = ref.watch(libraryTracksProvider).value ?? [];
+    final groups = <String, List<Track>>{};
+    for (final t in tracks) {
+      final keys = years
+          ? [
+              t.year?.toString() ?? 'Unknown year',
+              if (t.year != null) '${t.year! ~/ 10 * 10}s',
+            ]
+          : [t.genre ?? 'Unknown genre'];
+      for (final key in keys) {
+        groups.putIfAbsent(key, () => []).add(t);
+      }
+    }
+    final keys = groups.keys.toList()..sort();
+    if (keys.isEmpty) {
+      return const Center(child: Text('Scan music to browse its tags'));
+    }
+    return ListView.builder(
+      itemCount: keys.length,
+      itemBuilder: (context, i) {
+        final key = keys[i];
+        return ListTile(
+          leading: Icon(years ? Icons.calendar_today : Icons.style),
+          title: Text(key),
+          subtitle: Text('${groups[key]!.length} tracks'),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => TrackListScreen(
+                title: key,
+                tracks: AsyncValue.data(groups[key]!),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

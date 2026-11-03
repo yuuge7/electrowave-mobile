@@ -2,6 +2,11 @@
 *.class
 *.log
 *.pyc
+__pycache__/
+*.tmp
+*.bak
+*.orig
+*.rej
 *.swp
 .DS_Store
 .atom/
@@ -23,6 +28,8 @@ migrate_working_dir/
 
 *.md
 !README.md
+!ideas.md
+!docs/VALIDATION.md
 
 # Flutter / Dart / Pub
 **/doc/api/
@@ -33,10 +40,12 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
+**/build/
 **/generated_plugin_registrant.dart
 
 # Android
 .gradle/
+.kotlin/
 /captures/
 .externalNativeBuild
 .cxx
@@ -52,3 +61,29 @@ local.properties
 **/android/key.properties
 *.jks
 *.keystore
+*.p12
+*.pfx
+*.key
+*.pem
+.env
+.env.*
+!.env.example
+
+# Local app data, release packages and emulator output
+*.apk
+*.aab
+*.apk.sha256
+*.aab.sha256
+*.ewbackup
+*.db
+*.sqlite
+*.sqlite3
+/docs/testing/
+.codex_*.py
+
+# This app targets Android only
+/linux/
+/macos/
+/windows/
+/ios/
+/web/

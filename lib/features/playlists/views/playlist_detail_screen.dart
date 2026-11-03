@@ -9,6 +9,7 @@ import '../../../shared/widgets/state_views.dart';
 import '../../../shared/widgets/track_context_menu.dart';
 import '../../player/providers/player_providers.dart';
 import '../providers/playlist_providers.dart';
+import '../services/playlist_file_service.dart';
 
 class PlaylistDetailScreen extends ConsumerWidget {
   const PlaylistDetailScreen({super.key, required this.playlistId});
@@ -25,6 +26,23 @@ class PlaylistDetailScreen extends ConsumerWidget {
       appBar: AppBar(
         title: Text(playlist?.name ?? 'Playlist'),
         actions: [
+          IconButton(
+            tooltip: 'Export playlist file',
+            icon: const Icon(Icons.file_upload_outlined),
+            onPressed: () async {
+              try {
+                await PlaylistFileService(
+                  ref.read(databaseProvider),
+                ).export(playlist?.name ?? 'Playlist', tracksAsync.value ?? []);
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text('Export failed: $e')));
+                }
+              }
+            },
+          ),
           if (playlist != null)
             IconButton(
               icon: Icon(
@@ -33,10 +51,12 @@ class PlaylistDetailScreen extends ConsumerWidget {
                     : Icons.push_pin_outlined,
               ),
               tooltip: playlist.pinnedAt != null ? 'Unpin' : 'Pin to top',
-              onPressed: () => ref.read(databaseProvider).setPlaylistPinned(
-                playlistId,
-                pinned: playlist.pinnedAt == null,
-              ),
+              onPressed: () => ref
+                  .read(databaseProvider)
+                  .setPlaylistPinned(
+                    playlistId,
+                    pinned: playlist.pinnedAt == null,
+                  ),
             ),
           IconButton(
             icon: const Icon(Icons.playlist_add),
@@ -66,7 +86,8 @@ class PlaylistDetailScreen extends ConsumerWidget {
             return EmptyStateView(
               icon: Icons.playlist_add,
               title: 'Empty playlist',
-              message: 'Pick tracks from your library — search, take whole '
+              message:
+                  'Pick tracks from your library — search, take whole '
                   'albums, or hold to grab a run of them at once.',
               action: FilledButton.icon(
                 onPressed: () => context.push('/playlists/$playlistId/add'),
@@ -105,10 +126,16 @@ class PlaylistDetailScreen extends ConsumerWidget {
                   artPath: track.albumArtPath,
                   seed: track.album.isNotEmpty ? track.album : track.title,
                 ),
-                title: Text(track.title,
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
-                subtitle: Text(track.artist,
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                title: Text(
+                  track.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: Text(
+                  track.artist,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [

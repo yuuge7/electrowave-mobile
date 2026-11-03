@@ -18,6 +18,13 @@ class Tracks extends Table {
   TextColumn get artist => text()();
   TextColumn get album => text()();
   IntColumn get durationMs => integer()();
+  TextColumn get albumArtist => text().nullable()();
+  IntColumn get fileSize => integer().withDefault(const Constant(0))();
+  IntColumn get fileModifiedMs => integer().withDefault(const Constant(0))();
+  IntColumn get rating => integer().withDefault(const Constant(0))();
+  RealColumn get replayGainDb => real().nullable()();
+  IntColumn get skipCount => integer().withDefault(const Constant(0))();
+  IntColumn get startCount => integer().withDefault(const Constant(0))();
   TextColumn get genre => text().nullable()();
   TextColumn get albumArtPath => text().nullable()();
   IntColumn get trackNumber => integer().nullable()();
@@ -99,8 +106,11 @@ class AlbumSummary {
     required this.trackCount,
     required this.totalMs,
     this.albumArtPath,
+    this.albumArtist,
   });
 
+  final String? albumArtist;
+  String get key => albumArtist == null ? album : '$album\u001f$albumArtist';
   final String album;
 
   /// Album artist, taken as the most common artist on the album.
@@ -279,10 +289,12 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
+    onCreate: (m) => m.createAll(),
+    beforeOpen: (_) => _ensureIndexes(),
     onUpgrade: (m, from, to) async {
       if (from < 2) {
         await m.addColumn(tracks, tracks.isFavorite);
@@ -306,8 +318,55 @@ class AppDatabase extends _$AppDatabase {
           await m.addColumn(smartPlaylists, smartPlaylists.pinnedAt);
         }
       }
+      if (from < 6) {
+        for (final column in [
+          tracks.albumArtist,
+          tracks.fileSize,
+          tracks.fileModifiedMs,
+          tracks.rating,
+          tracks.replayGainDb,
+          tracks.skipCount,
+          tracks.startCount,
+        ]) {
+          await m.addColumn(tracks, column);
+        }
+      }
     },
   );
+
+  Future<void> _ensureIndexes() async {
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS tracks_identity ON tracks(title COLLATE NOCASE, artist COLLATE NOCASE)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS tracks_library_title ON tracks(is_deleted,title COLLATE NOCASE)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS sessions_track ON listening_sessions(track_id,started_at)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS history_track ON playback_history(track_id,played_at)',
+    );
+    final exists = await customSelect(
+      "SELECT name FROM sqlite_master WHERE name='track_search'",
+    ).get();
+    if (exists.isNotEmpty) return;
+    await customStatement(
+      "CREATE VIRTUAL TABLE track_search USING fts5(title,artist,album,genre,content='tracks',content_rowid='id',tokenize='unicode61 remove_diacritics 2')",
+    );
+    await customStatement(
+      "CREATE TRIGGER track_search_insert AFTER INSERT ON tracks BEGIN INSERT INTO track_search(rowid,title,artist,album,genre) VALUES(new.id,new.title,new.artist,new.album,new.genre); END",
+    );
+    await customStatement(
+      "CREATE TRIGGER track_search_delete AFTER DELETE ON tracks BEGIN INSERT INTO track_search(track_search,rowid,title,artist,album,genre) VALUES('delete',old.id,old.title,old.artist,old.album,old.genre); END",
+    );
+    await customStatement(
+      "CREATE TRIGGER track_search_update AFTER UPDATE OF title,artist,album,genre ON tracks BEGIN INSERT INTO track_search(track_search,rowid,title,artist,album,genre) VALUES('delete',old.id,old.title,old.artist,old.album,old.genre); INSERT INTO track_search(rowid,title,artist,album,genre) VALUES(new.id,new.title,new.artist,new.album,new.genre); END",
+    );
+    await customStatement(
+      "INSERT INTO track_search(track_search) VALUES('rebuild')",
+    );
+  }
 
   static QueryExecutor _openConnection() {
     return LazyDatabase(() async {
@@ -323,34 +382,60 @@ class AppDatabase extends _$AppDatabase {
   Stream<List<Track>> watchLibrary({
     String search = '',
     LibrarySort sort = LibrarySort.title,
+    bool descending = false,
   }) {
     final query = select(tracks)..where((t) => t.isDeleted.equals(false));
 
     if (search.trim().isNotEmpty) {
-      final needle = '%${search.trim()}%';
+      final terms = RegExp(
+        r'[\p{L}\p{N}_]+',
+        unicode: true,
+      ).allMatches(search).map((m) => '"${m[0]}"*').join(' AND ');
+      if (terms.isEmpty) return Stream.value(const []);
+      final literal = terms.replaceAll("'", "''");
       query.where(
-        (t) =>
-            t.title.like(needle) | t.artist.like(needle) | t.album.like(needle),
+        (t) => CustomExpression<bool>(
+          "tracks.id IN (SELECT rowid FROM track_search WHERE track_search MATCH '$literal')",
+        ),
       );
     }
+    final asc = descending ? OrderingMode.desc : OrderingMode.asc;
+    final desc = descending ? OrderingMode.asc : OrderingMode.desc;
 
     switch (sort) {
       case LibrarySort.title:
         query.orderBy([
-          (t) => OrderingTerm.asc(t.title.collate(Collate.noCase)),
+          (t) => OrderingTerm(
+            expression: t.title.collate(Collate.noCase),
+            mode: asc,
+          ),
         ]);
       case LibrarySort.artist:
         query.orderBy([
-          (t) => OrderingTerm.asc(t.artist.collate(Collate.noCase)),
-          (t) => OrderingTerm.asc(t.album.collate(Collate.noCase)),
-          (t) => OrderingTerm.asc(t.title.collate(Collate.noCase)),
+          (t) => OrderingTerm(
+            expression: t.artist.collate(Collate.noCase),
+            mode: asc,
+          ),
+          (t) => OrderingTerm(
+            expression: t.album.collate(Collate.noCase),
+            mode: asc,
+          ),
+          (t) => OrderingTerm(
+            expression: t.title.collate(Collate.noCase),
+            mode: asc,
+          ),
         ]);
       case LibrarySort.dateAdded:
-        query.orderBy([(t) => OrderingTerm.desc(t.dateAdded)]);
+        query.orderBy([
+          (t) => OrderingTerm(expression: t.dateAdded, mode: desc),
+        ]);
       case LibrarySort.playCount:
         query.orderBy([
-          (t) => OrderingTerm.desc(t.totalPlayCount),
-          (t) => OrderingTerm.asc(t.title.collate(Collate.noCase)),
+          (t) => OrderingTerm(expression: t.totalPlayCount, mode: desc),
+          (t) => OrderingTerm(
+            expression: t.title.collate(Collate.noCase),
+            mode: asc,
+          ),
         ]);
     }
 
@@ -387,6 +472,33 @@ class AppDatabase extends _$AppDatabase {
   Future<int> upsertScannedTrack(TracksCompanion entry) {
     return transaction(() async {
       final byPath = await trackByPath(entry.filePath.value);
+      if (byPath == null) {
+        final filename = p.basename(entry.filePath.value);
+        final candidates = await (select(
+          tracks,
+        )..where((t) => t.filePath.like('%$filename'))).get();
+        for (final depth in [3, 2, 1]) {
+          final parts = p.split(entry.filePath.value);
+          final suffix = p.joinAll(
+            parts.skip(parts.length > depth ? parts.length - depth : 0),
+          );
+          final matches = candidates
+              .where(
+                (t) =>
+                    t.filePath.endsWith(suffix) &&
+                    (t.durationMs == 0 ||
+                        entry.durationMs.value == 0 ||
+                        (t.durationMs - entry.durationMs.value).abs() < 2000),
+              )
+              .toList();
+          if (matches.length == 1 &&
+              !await File(matches.single.filePath).exists()) {
+            await (update(tracks)..where((t) => t.id.equals(matches.single.id)))
+                .write(entry.copyWith(dateAdded: const Value.absent()));
+            return matches.single.id;
+          }
+        }
+      }
       final twins = await _sameSong(
         entry.title.value,
         entry.artist.value,
@@ -409,6 +521,13 @@ class AppDatabase extends _$AppDatabase {
                 album: entry.album,
                 durationMs: entry.durationMs,
                 genre: entry.genre,
+                albumArtist: entry.albumArtist,
+                rating: entry.rating,
+                trackNumber: entry.trackNumber,
+                discNumber: entry.discNumber,
+                year: entry.year,
+                fileSize: entry.fileSize,
+                fileModifiedMs: entry.fileModifiedMs,
                 albumArtPath: entry.albumArtPath,
                 isDeleted: const Value(false),
               )
@@ -438,6 +557,7 @@ class AppDatabase extends _$AppDatabase {
   /// can update a single field without clobbering the rest.
   Future<void> updateTrackTags(
     int trackId, {
+    Value<String?> albumArtist = const Value.absent(),
     Value<String> title = const Value.absent(),
     Value<String> artist = const Value.absent(),
     Value<String> album = const Value.absent(),
@@ -449,6 +569,7 @@ class AppDatabase extends _$AppDatabase {
     return transaction(() async {
       await (update(tracks)..where((t) => t.id.equals(trackId))).write(
         TracksCompanion(
+          albumArtist: albumArtist,
           title: title,
           artist: artist,
           album: album,
@@ -524,8 +645,7 @@ class AppDatabase extends _$AppDatabase {
       )..where((pt) => pt.trackId.equals(from.id))).go();
       await (update(playbackHistory)..where((h) => h.trackId.equals(from.id)))
           .write(PlaybackHistoryCompanion(trackId: Value(into)));
-      await (update(listeningSessions)
-            ..where((s) => s.trackId.equals(from.id)))
+      await (update(listeningSessions)..where((s) => s.trackId.equals(from.id)))
           .write(ListeningSessionsCompanion(trackId: Value(into)));
       // Gone before the write below, which may hand its path on — paths are
       // unique.
@@ -635,9 +755,17 @@ class AppDatabase extends _$AppDatabase {
     final artistCount = tracks.artist.count(distinct: true);
 
     final query = selectOnly(tracks)
-      ..addColumns([tracks.album, count, totalMs, art, anyArtist, artistCount])
+      ..addColumns([
+        tracks.album,
+        tracks.albumArtist,
+        count,
+        totalMs,
+        art,
+        anyArtist,
+        artistCount,
+      ])
       ..where(tracks.isDeleted.equals(false))
-      ..groupBy([tracks.album])
+      ..groupBy([tracks.album, tracks.albumArtist])
       ..orderBy([OrderingTerm.asc(tracks.album.collate(Collate.noCase))]);
 
     if (search.trim().isNotEmpty) {
@@ -649,9 +777,12 @@ class AppDatabase extends _$AppDatabase {
       final distinctArtists = row.read(artistCount) ?? 0;
       return AlbumSummary(
         album: row.read(tracks.album) ?? '',
-        artist: distinctArtists > 1
-            ? 'Various artists'
-            : (row.read(anyArtist) ?? ''),
+        albumArtist: row.read(tracks.albumArtist),
+        artist:
+            row.read(tracks.albumArtist) ??
+            (distinctArtists > 1
+                ? 'Various artists'
+                : (row.read(anyArtist) ?? '')),
         trackCount: row.read(count) ?? 0,
         totalMs: row.read(totalMs) ?? 0,
         albumArtPath: row.read(art),
@@ -691,8 +822,18 @@ class AppDatabase extends _$AppDatabase {
   /// Album running order: disc, then track number, falling back to title for
   /// files whose tags carry no numbering.
   Stream<List<Track>> watchAlbumTracks(String album) {
+    final parts = album.split('\u001f');
+    final albumName = parts.first;
+    final albumArtist = parts.length > 1 ? parts[1] : null;
     final query = select(tracks)
-      ..where((t) => t.isDeleted.equals(false) & t.album.equals(album))
+      ..where(
+        (t) =>
+            t.isDeleted.equals(false) &
+            t.album.equals(albumName) &
+            (albumArtist == null
+                ? t.albumArtist.isNull()
+                : t.albumArtist.equals(albumArtist)),
+      )
       ..orderBy([
         (t) => OrderingTerm.asc(t.discNumber),
         (t) => OrderingTerm.asc(t.trackNumber),
@@ -1269,9 +1410,9 @@ class AppDatabase extends _$AppDatabase {
   Future<int> addTracksToPlaylist(int playlistId, List<int> trackIds) async {
     if (trackIds.isEmpty) return 0;
     return transaction(() async {
-      final existing = await (select(playlistTracks)
-            ..where((pt) => pt.playlistId.equals(playlistId)))
-          .get();
+      final existing = await (select(
+        playlistTracks,
+      )..where((pt) => pt.playlistId.equals(playlistId))).get();
       final present = {for (final row in existing) row.trackId};
       var position = -1;
       for (final row in existing) {
@@ -1291,7 +1432,8 @@ class AppDatabase extends _$AppDatabase {
       }
       if (rows.isEmpty) return 0;
       await batch(
-        (b) => b.insertAll(playlistTracks, rows, mode: InsertMode.insertOrIgnore),
+        (b) =>
+            b.insertAll(playlistTracks, rows, mode: InsertMode.insertOrIgnore),
       );
       return rows.length;
     });
@@ -1387,6 +1529,25 @@ class AppDatabase extends _$AppDatabase {
   // -------------------------------------------------------------------------
   // Backup
   // -------------------------------------------------------------------------
+
+  Future<void> recordStart(int id) => customUpdate(
+    'UPDATE tracks SET start_count=start_count+1 WHERE id=?',
+    variables: [Variable.withInt(id)],
+    updates: {tracks},
+  );
+  Future<void> recordSkip(int id) => customUpdate(
+    'UPDATE tracks SET skip_count=skip_count+1 WHERE id=?',
+    variables: [Variable.withInt(id)],
+    updates: {tracks},
+  );
+  Future<void> setRating(int id, int rating) =>
+      (update(tracks)..where((t) => t.id.equals(id))).write(
+        TracksCompanion(rating: Value(rating.clamp(0, 5))),
+      );
+  Future<void> setCalculatedGain(int id, double gain) =>
+      (update(tracks)..where((t) => t.id.equals(id))).write(
+        TracksCompanion(replayGainDb: Value(gain)),
+      );
 
   /// Write a consistent snapshot of the database to [targetPath] while the
   /// database stays open (VACUUM INTO gives a clean, compacted copy).

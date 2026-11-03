@@ -71,6 +71,86 @@ class $TracksTable extends Tracks with TableInfo<$TracksTable, Track> {
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _albumArtistMeta = const VerificationMeta(
+    'albumArtist',
+  );
+  @override
+  late final GeneratedColumn<String> albumArtist = GeneratedColumn<String>(
+    'album_artist',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _fileSizeMeta = const VerificationMeta(
+    'fileSize',
+  );
+  @override
+  late final GeneratedColumn<int> fileSize = GeneratedColumn<int>(
+    'file_size',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _fileModifiedMsMeta = const VerificationMeta(
+    'fileModifiedMs',
+  );
+  @override
+  late final GeneratedColumn<int> fileModifiedMs = GeneratedColumn<int>(
+    'file_modified_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _ratingMeta = const VerificationMeta('rating');
+  @override
+  late final GeneratedColumn<int> rating = GeneratedColumn<int>(
+    'rating',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _replayGainDbMeta = const VerificationMeta(
+    'replayGainDb',
+  );
+  @override
+  late final GeneratedColumn<double> replayGainDb = GeneratedColumn<double>(
+    'replay_gain_db',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _skipCountMeta = const VerificationMeta(
+    'skipCount',
+  );
+  @override
+  late final GeneratedColumn<int> skipCount = GeneratedColumn<int>(
+    'skip_count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _startCountMeta = const VerificationMeta(
+    'startCount',
+  );
+  @override
+  late final GeneratedColumn<int> startCount = GeneratedColumn<int>(
+    'start_count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _genreMeta = const VerificationMeta('genre');
   @override
   late final GeneratedColumn<String> genre = GeneratedColumn<String>(
@@ -195,6 +275,13 @@ class $TracksTable extends Tracks with TableInfo<$TracksTable, Track> {
     artist,
     album,
     durationMs,
+    albumArtist,
+    fileSize,
+    fileModifiedMs,
+    rating,
+    replayGainDb,
+    skipCount,
+    startCount,
     genre,
     albumArtPath,
     trackNumber,
@@ -260,6 +347,57 @@ class $TracksTable extends Tracks with TableInfo<$TracksTable, Track> {
       );
     } else if (isInserting) {
       context.missing(_durationMsMeta);
+    }
+    if (data.containsKey('album_artist')) {
+      context.handle(
+        _albumArtistMeta,
+        albumArtist.isAcceptableOrUnknown(
+          data['album_artist']!,
+          _albumArtistMeta,
+        ),
+      );
+    }
+    if (data.containsKey('file_size')) {
+      context.handle(
+        _fileSizeMeta,
+        fileSize.isAcceptableOrUnknown(data['file_size']!, _fileSizeMeta),
+      );
+    }
+    if (data.containsKey('file_modified_ms')) {
+      context.handle(
+        _fileModifiedMsMeta,
+        fileModifiedMs.isAcceptableOrUnknown(
+          data['file_modified_ms']!,
+          _fileModifiedMsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('rating')) {
+      context.handle(
+        _ratingMeta,
+        rating.isAcceptableOrUnknown(data['rating']!, _ratingMeta),
+      );
+    }
+    if (data.containsKey('replay_gain_db')) {
+      context.handle(
+        _replayGainDbMeta,
+        replayGainDb.isAcceptableOrUnknown(
+          data['replay_gain_db']!,
+          _replayGainDbMeta,
+        ),
+      );
+    }
+    if (data.containsKey('skip_count')) {
+      context.handle(
+        _skipCountMeta,
+        skipCount.isAcceptableOrUnknown(data['skip_count']!, _skipCountMeta),
+      );
+    }
+    if (data.containsKey('start_count')) {
+      context.handle(
+        _startCountMeta,
+        startCount.isAcceptableOrUnknown(data['start_count']!, _startCountMeta),
+      );
     }
     if (data.containsKey('genre')) {
       context.handle(
@@ -363,6 +501,34 @@ class $TracksTable extends Tracks with TableInfo<$TracksTable, Track> {
         DriftSqlType.int,
         data['${effectivePrefix}duration_ms'],
       )!,
+      albumArtist: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}album_artist'],
+      ),
+      fileSize: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}file_size'],
+      )!,
+      fileModifiedMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}file_modified_ms'],
+      )!,
+      rating: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}rating'],
+      )!,
+      replayGainDb: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}replay_gain_db'],
+      ),
+      skipCount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}skip_count'],
+      )!,
+      startCount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}start_count'],
+      )!,
       genre: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}genre'],
@@ -419,6 +585,13 @@ class Track extends DataClass implements Insertable<Track> {
   final String artist;
   final String album;
   final int durationMs;
+  final String? albumArtist;
+  final int fileSize;
+  final int fileModifiedMs;
+  final int rating;
+  final double? replayGainDb;
+  final int skipCount;
+  final int startCount;
   final String? genre;
   final String? albumArtPath;
   final int? trackNumber;
@@ -436,6 +609,13 @@ class Track extends DataClass implements Insertable<Track> {
     required this.artist,
     required this.album,
     required this.durationMs,
+    this.albumArtist,
+    required this.fileSize,
+    required this.fileModifiedMs,
+    required this.rating,
+    this.replayGainDb,
+    required this.skipCount,
+    required this.startCount,
     this.genre,
     this.albumArtPath,
     this.trackNumber,
@@ -456,6 +636,17 @@ class Track extends DataClass implements Insertable<Track> {
     map['artist'] = Variable<String>(artist);
     map['album'] = Variable<String>(album);
     map['duration_ms'] = Variable<int>(durationMs);
+    if (!nullToAbsent || albumArtist != null) {
+      map['album_artist'] = Variable<String>(albumArtist);
+    }
+    map['file_size'] = Variable<int>(fileSize);
+    map['file_modified_ms'] = Variable<int>(fileModifiedMs);
+    map['rating'] = Variable<int>(rating);
+    if (!nullToAbsent || replayGainDb != null) {
+      map['replay_gain_db'] = Variable<double>(replayGainDb);
+    }
+    map['skip_count'] = Variable<int>(skipCount);
+    map['start_count'] = Variable<int>(startCount);
     if (!nullToAbsent || genre != null) {
       map['genre'] = Variable<String>(genre);
     }
@@ -489,6 +680,17 @@ class Track extends DataClass implements Insertable<Track> {
       artist: Value(artist),
       album: Value(album),
       durationMs: Value(durationMs),
+      albumArtist: albumArtist == null && nullToAbsent
+          ? const Value.absent()
+          : Value(albumArtist),
+      fileSize: Value(fileSize),
+      fileModifiedMs: Value(fileModifiedMs),
+      rating: Value(rating),
+      replayGainDb: replayGainDb == null && nullToAbsent
+          ? const Value.absent()
+          : Value(replayGainDb),
+      skipCount: Value(skipCount),
+      startCount: Value(startCount),
       genre: genre == null && nullToAbsent
           ? const Value.absent()
           : Value(genre),
@@ -524,6 +726,13 @@ class Track extends DataClass implements Insertable<Track> {
       artist: serializer.fromJson<String>(json['artist']),
       album: serializer.fromJson<String>(json['album']),
       durationMs: serializer.fromJson<int>(json['durationMs']),
+      albumArtist: serializer.fromJson<String?>(json['albumArtist']),
+      fileSize: serializer.fromJson<int>(json['fileSize']),
+      fileModifiedMs: serializer.fromJson<int>(json['fileModifiedMs']),
+      rating: serializer.fromJson<int>(json['rating']),
+      replayGainDb: serializer.fromJson<double?>(json['replayGainDb']),
+      skipCount: serializer.fromJson<int>(json['skipCount']),
+      startCount: serializer.fromJson<int>(json['startCount']),
       genre: serializer.fromJson<String?>(json['genre']),
       albumArtPath: serializer.fromJson<String?>(json['albumArtPath']),
       trackNumber: serializer.fromJson<int?>(json['trackNumber']),
@@ -546,6 +755,13 @@ class Track extends DataClass implements Insertable<Track> {
       'artist': serializer.toJson<String>(artist),
       'album': serializer.toJson<String>(album),
       'durationMs': serializer.toJson<int>(durationMs),
+      'albumArtist': serializer.toJson<String?>(albumArtist),
+      'fileSize': serializer.toJson<int>(fileSize),
+      'fileModifiedMs': serializer.toJson<int>(fileModifiedMs),
+      'rating': serializer.toJson<int>(rating),
+      'replayGainDb': serializer.toJson<double?>(replayGainDb),
+      'skipCount': serializer.toJson<int>(skipCount),
+      'startCount': serializer.toJson<int>(startCount),
       'genre': serializer.toJson<String?>(genre),
       'albumArtPath': serializer.toJson<String?>(albumArtPath),
       'trackNumber': serializer.toJson<int?>(trackNumber),
@@ -566,6 +782,13 @@ class Track extends DataClass implements Insertable<Track> {
     String? artist,
     String? album,
     int? durationMs,
+    Value<String?> albumArtist = const Value.absent(),
+    int? fileSize,
+    int? fileModifiedMs,
+    int? rating,
+    Value<double?> replayGainDb = const Value.absent(),
+    int? skipCount,
+    int? startCount,
     Value<String?> genre = const Value.absent(),
     Value<String?> albumArtPath = const Value.absent(),
     Value<int?> trackNumber = const Value.absent(),
@@ -583,6 +806,13 @@ class Track extends DataClass implements Insertable<Track> {
     artist: artist ?? this.artist,
     album: album ?? this.album,
     durationMs: durationMs ?? this.durationMs,
+    albumArtist: albumArtist.present ? albumArtist.value : this.albumArtist,
+    fileSize: fileSize ?? this.fileSize,
+    fileModifiedMs: fileModifiedMs ?? this.fileModifiedMs,
+    rating: rating ?? this.rating,
+    replayGainDb: replayGainDb.present ? replayGainDb.value : this.replayGainDb,
+    skipCount: skipCount ?? this.skipCount,
+    startCount: startCount ?? this.startCount,
     genre: genre.present ? genre.value : this.genre,
     albumArtPath: albumArtPath.present ? albumArtPath.value : this.albumArtPath,
     trackNumber: trackNumber.present ? trackNumber.value : this.trackNumber,
@@ -604,6 +834,21 @@ class Track extends DataClass implements Insertable<Track> {
       durationMs: data.durationMs.present
           ? data.durationMs.value
           : this.durationMs,
+      albumArtist: data.albumArtist.present
+          ? data.albumArtist.value
+          : this.albumArtist,
+      fileSize: data.fileSize.present ? data.fileSize.value : this.fileSize,
+      fileModifiedMs: data.fileModifiedMs.present
+          ? data.fileModifiedMs.value
+          : this.fileModifiedMs,
+      rating: data.rating.present ? data.rating.value : this.rating,
+      replayGainDb: data.replayGainDb.present
+          ? data.replayGainDb.value
+          : this.replayGainDb,
+      skipCount: data.skipCount.present ? data.skipCount.value : this.skipCount,
+      startCount: data.startCount.present
+          ? data.startCount.value
+          : this.startCount,
       genre: data.genre.present ? data.genre.value : this.genre,
       albumArtPath: data.albumArtPath.present
           ? data.albumArtPath.value
@@ -638,6 +883,13 @@ class Track extends DataClass implements Insertable<Track> {
           ..write('artist: $artist, ')
           ..write('album: $album, ')
           ..write('durationMs: $durationMs, ')
+          ..write('albumArtist: $albumArtist, ')
+          ..write('fileSize: $fileSize, ')
+          ..write('fileModifiedMs: $fileModifiedMs, ')
+          ..write('rating: $rating, ')
+          ..write('replayGainDb: $replayGainDb, ')
+          ..write('skipCount: $skipCount, ')
+          ..write('startCount: $startCount, ')
           ..write('genre: $genre, ')
           ..write('albumArtPath: $albumArtPath, ')
           ..write('trackNumber: $trackNumber, ')
@@ -653,13 +905,20 @@ class Track extends DataClass implements Insertable<Track> {
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     id,
     filePath,
     title,
     artist,
     album,
     durationMs,
+    albumArtist,
+    fileSize,
+    fileModifiedMs,
+    rating,
+    replayGainDb,
+    skipCount,
+    startCount,
     genre,
     albumArtPath,
     trackNumber,
@@ -670,7 +929,7 @@ class Track extends DataClass implements Insertable<Track> {
     lastPlayed,
     isDeleted,
     isFavorite,
-  );
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -681,6 +940,13 @@ class Track extends DataClass implements Insertable<Track> {
           other.artist == this.artist &&
           other.album == this.album &&
           other.durationMs == this.durationMs &&
+          other.albumArtist == this.albumArtist &&
+          other.fileSize == this.fileSize &&
+          other.fileModifiedMs == this.fileModifiedMs &&
+          other.rating == this.rating &&
+          other.replayGainDb == this.replayGainDb &&
+          other.skipCount == this.skipCount &&
+          other.startCount == this.startCount &&
           other.genre == this.genre &&
           other.albumArtPath == this.albumArtPath &&
           other.trackNumber == this.trackNumber &&
@@ -700,6 +966,13 @@ class TracksCompanion extends UpdateCompanion<Track> {
   final Value<String> artist;
   final Value<String> album;
   final Value<int> durationMs;
+  final Value<String?> albumArtist;
+  final Value<int> fileSize;
+  final Value<int> fileModifiedMs;
+  final Value<int> rating;
+  final Value<double?> replayGainDb;
+  final Value<int> skipCount;
+  final Value<int> startCount;
   final Value<String?> genre;
   final Value<String?> albumArtPath;
   final Value<int?> trackNumber;
@@ -717,6 +990,13 @@ class TracksCompanion extends UpdateCompanion<Track> {
     this.artist = const Value.absent(),
     this.album = const Value.absent(),
     this.durationMs = const Value.absent(),
+    this.albumArtist = const Value.absent(),
+    this.fileSize = const Value.absent(),
+    this.fileModifiedMs = const Value.absent(),
+    this.rating = const Value.absent(),
+    this.replayGainDb = const Value.absent(),
+    this.skipCount = const Value.absent(),
+    this.startCount = const Value.absent(),
     this.genre = const Value.absent(),
     this.albumArtPath = const Value.absent(),
     this.trackNumber = const Value.absent(),
@@ -735,6 +1015,13 @@ class TracksCompanion extends UpdateCompanion<Track> {
     required String artist,
     required String album,
     required int durationMs,
+    this.albumArtist = const Value.absent(),
+    this.fileSize = const Value.absent(),
+    this.fileModifiedMs = const Value.absent(),
+    this.rating = const Value.absent(),
+    this.replayGainDb = const Value.absent(),
+    this.skipCount = const Value.absent(),
+    this.startCount = const Value.absent(),
     this.genre = const Value.absent(),
     this.albumArtPath = const Value.absent(),
     this.trackNumber = const Value.absent(),
@@ -757,6 +1044,13 @@ class TracksCompanion extends UpdateCompanion<Track> {
     Expression<String>? artist,
     Expression<String>? album,
     Expression<int>? durationMs,
+    Expression<String>? albumArtist,
+    Expression<int>? fileSize,
+    Expression<int>? fileModifiedMs,
+    Expression<int>? rating,
+    Expression<double>? replayGainDb,
+    Expression<int>? skipCount,
+    Expression<int>? startCount,
     Expression<String>? genre,
     Expression<String>? albumArtPath,
     Expression<int>? trackNumber,
@@ -775,6 +1069,13 @@ class TracksCompanion extends UpdateCompanion<Track> {
       if (artist != null) 'artist': artist,
       if (album != null) 'album': album,
       if (durationMs != null) 'duration_ms': durationMs,
+      if (albumArtist != null) 'album_artist': albumArtist,
+      if (fileSize != null) 'file_size': fileSize,
+      if (fileModifiedMs != null) 'file_modified_ms': fileModifiedMs,
+      if (rating != null) 'rating': rating,
+      if (replayGainDb != null) 'replay_gain_db': replayGainDb,
+      if (skipCount != null) 'skip_count': skipCount,
+      if (startCount != null) 'start_count': startCount,
       if (genre != null) 'genre': genre,
       if (albumArtPath != null) 'album_art_path': albumArtPath,
       if (trackNumber != null) 'track_number': trackNumber,
@@ -795,6 +1096,13 @@ class TracksCompanion extends UpdateCompanion<Track> {
     Value<String>? artist,
     Value<String>? album,
     Value<int>? durationMs,
+    Value<String?>? albumArtist,
+    Value<int>? fileSize,
+    Value<int>? fileModifiedMs,
+    Value<int>? rating,
+    Value<double?>? replayGainDb,
+    Value<int>? skipCount,
+    Value<int>? startCount,
     Value<String?>? genre,
     Value<String?>? albumArtPath,
     Value<int?>? trackNumber,
@@ -813,6 +1121,13 @@ class TracksCompanion extends UpdateCompanion<Track> {
       artist: artist ?? this.artist,
       album: album ?? this.album,
       durationMs: durationMs ?? this.durationMs,
+      albumArtist: albumArtist ?? this.albumArtist,
+      fileSize: fileSize ?? this.fileSize,
+      fileModifiedMs: fileModifiedMs ?? this.fileModifiedMs,
+      rating: rating ?? this.rating,
+      replayGainDb: replayGainDb ?? this.replayGainDb,
+      skipCount: skipCount ?? this.skipCount,
+      startCount: startCount ?? this.startCount,
       genre: genre ?? this.genre,
       albumArtPath: albumArtPath ?? this.albumArtPath,
       trackNumber: trackNumber ?? this.trackNumber,
@@ -846,6 +1161,27 @@ class TracksCompanion extends UpdateCompanion<Track> {
     }
     if (durationMs.present) {
       map['duration_ms'] = Variable<int>(durationMs.value);
+    }
+    if (albumArtist.present) {
+      map['album_artist'] = Variable<String>(albumArtist.value);
+    }
+    if (fileSize.present) {
+      map['file_size'] = Variable<int>(fileSize.value);
+    }
+    if (fileModifiedMs.present) {
+      map['file_modified_ms'] = Variable<int>(fileModifiedMs.value);
+    }
+    if (rating.present) {
+      map['rating'] = Variable<int>(rating.value);
+    }
+    if (replayGainDb.present) {
+      map['replay_gain_db'] = Variable<double>(replayGainDb.value);
+    }
+    if (skipCount.present) {
+      map['skip_count'] = Variable<int>(skipCount.value);
+    }
+    if (startCount.present) {
+      map['start_count'] = Variable<int>(startCount.value);
     }
     if (genre.present) {
       map['genre'] = Variable<String>(genre.value);
@@ -889,6 +1225,13 @@ class TracksCompanion extends UpdateCompanion<Track> {
           ..write('artist: $artist, ')
           ..write('album: $album, ')
           ..write('durationMs: $durationMs, ')
+          ..write('albumArtist: $albumArtist, ')
+          ..write('fileSize: $fileSize, ')
+          ..write('fileModifiedMs: $fileModifiedMs, ')
+          ..write('rating: $rating, ')
+          ..write('replayGainDb: $replayGainDb, ')
+          ..write('skipCount: $skipCount, ')
+          ..write('startCount: $startCount, ')
           ..write('genre: $genre, ')
           ..write('albumArtPath: $albumArtPath, ')
           ..write('trackNumber: $trackNumber, ')
@@ -2419,6 +2762,13 @@ typedef $$TracksTableCreateCompanionBuilder =
       required String artist,
       required String album,
       required int durationMs,
+      Value<String?> albumArtist,
+      Value<int> fileSize,
+      Value<int> fileModifiedMs,
+      Value<int> rating,
+      Value<double?> replayGainDb,
+      Value<int> skipCount,
+      Value<int> startCount,
       Value<String?> genre,
       Value<String?> albumArtPath,
       Value<int?> trackNumber,
@@ -2438,6 +2788,13 @@ typedef $$TracksTableUpdateCompanionBuilder =
       Value<String> artist,
       Value<String> album,
       Value<int> durationMs,
+      Value<String?> albumArtist,
+      Value<int> fileSize,
+      Value<int> fileModifiedMs,
+      Value<int> rating,
+      Value<double?> replayGainDb,
+      Value<int> skipCount,
+      Value<int> startCount,
       Value<String?> genre,
       Value<String?> albumArtPath,
       Value<int?> trackNumber,
@@ -2553,6 +2910,41 @@ class $$TracksTableFilterComposer
 
   ColumnFilters<int> get durationMs => $composableBuilder(
     column: $table.durationMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get albumArtist => $composableBuilder(
+    column: $table.albumArtist,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get fileSize => $composableBuilder(
+    column: $table.fileSize,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get fileModifiedMs => $composableBuilder(
+    column: $table.fileModifiedMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get rating => $composableBuilder(
+    column: $table.rating,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get replayGainDb => $composableBuilder(
+    column: $table.replayGainDb,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get skipCount => $composableBuilder(
+    column: $table.skipCount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get startCount => $composableBuilder(
+    column: $table.startCount,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2721,6 +3113,41 @@ class $$TracksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get albumArtist => $composableBuilder(
+    column: $table.albumArtist,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get fileSize => $composableBuilder(
+    column: $table.fileSize,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get fileModifiedMs => $composableBuilder(
+    column: $table.fileModifiedMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get rating => $composableBuilder(
+    column: $table.rating,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get replayGainDb => $composableBuilder(
+    column: $table.replayGainDb,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get skipCount => $composableBuilder(
+    column: $table.skipCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get startCount => $composableBuilder(
+    column: $table.startCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get genre => $composableBuilder(
     column: $table.genre,
     builder: (column) => ColumnOrderings(column),
@@ -2798,6 +3225,35 @@ class $$TracksTableAnnotationComposer
 
   GeneratedColumn<int> get durationMs => $composableBuilder(
     column: $table.durationMs,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get albumArtist => $composableBuilder(
+    column: $table.albumArtist,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get fileSize =>
+      $composableBuilder(column: $table.fileSize, builder: (column) => column);
+
+  GeneratedColumn<int> get fileModifiedMs => $composableBuilder(
+    column: $table.fileModifiedMs,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get rating =>
+      $composableBuilder(column: $table.rating, builder: (column) => column);
+
+  GeneratedColumn<double> get replayGainDb => $composableBuilder(
+    column: $table.replayGainDb,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get skipCount =>
+      $composableBuilder(column: $table.skipCount, builder: (column) => column);
+
+  GeneratedColumn<int> get startCount => $composableBuilder(
+    column: $table.startCount,
     builder: (column) => column,
   );
 
@@ -2958,6 +3414,13 @@ class $$TracksTableTableManager
                 Value<String> artist = const Value.absent(),
                 Value<String> album = const Value.absent(),
                 Value<int> durationMs = const Value.absent(),
+                Value<String?> albumArtist = const Value.absent(),
+                Value<int> fileSize = const Value.absent(),
+                Value<int> fileModifiedMs = const Value.absent(),
+                Value<int> rating = const Value.absent(),
+                Value<double?> replayGainDb = const Value.absent(),
+                Value<int> skipCount = const Value.absent(),
+                Value<int> startCount = const Value.absent(),
                 Value<String?> genre = const Value.absent(),
                 Value<String?> albumArtPath = const Value.absent(),
                 Value<int?> trackNumber = const Value.absent(),
@@ -2975,6 +3438,13 @@ class $$TracksTableTableManager
                 artist: artist,
                 album: album,
                 durationMs: durationMs,
+                albumArtist: albumArtist,
+                fileSize: fileSize,
+                fileModifiedMs: fileModifiedMs,
+                rating: rating,
+                replayGainDb: replayGainDb,
+                skipCount: skipCount,
+                startCount: startCount,
                 genre: genre,
                 albumArtPath: albumArtPath,
                 trackNumber: trackNumber,
@@ -2994,6 +3464,13 @@ class $$TracksTableTableManager
                 required String artist,
                 required String album,
                 required int durationMs,
+                Value<String?> albumArtist = const Value.absent(),
+                Value<int> fileSize = const Value.absent(),
+                Value<int> fileModifiedMs = const Value.absent(),
+                Value<int> rating = const Value.absent(),
+                Value<double?> replayGainDb = const Value.absent(),
+                Value<int> skipCount = const Value.absent(),
+                Value<int> startCount = const Value.absent(),
                 Value<String?> genre = const Value.absent(),
                 Value<String?> albumArtPath = const Value.absent(),
                 Value<int?> trackNumber = const Value.absent(),
@@ -3011,6 +3488,13 @@ class $$TracksTableTableManager
                 artist: artist,
                 album: album,
                 durationMs: durationMs,
+                albumArtist: albumArtist,
+                fileSize: fileSize,
+                fileModifiedMs: fileModifiedMs,
+                rating: rating,
+                replayGainDb: replayGainDb,
+                skipCount: skipCount,
+                startCount: startCount,
                 genre: genre,
                 albumArtPath: albumArtPath,
                 trackNumber: trackNumber,

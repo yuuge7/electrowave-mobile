@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/database/database.dart';
 import '../../../shared/utils/format.dart';
+import '../../../core/database/database.dart';
 import '../../../shared/widgets/art_thumb.dart';
 import '../../../shared/widgets/state_views.dart';
 import '../providers/browse_providers.dart';
 import 'track_list_screen.dart';
+import '../../../shared/widgets/alphabet_list.dart';
 
 /// Albums tab: art grid. Tapping opens the album's track list.
 class AlbumsGrid extends ConsumerWidget {
@@ -26,23 +27,14 @@ class AlbumsGrid extends ConsumerWidget {
           return const EmptyStateView(
             icon: Icons.album_outlined,
             title: 'No albums yet',
-            message: 'Albums are grouped from your files\u2019 tags. Scan a '
+            message:
+                'Albums are grouped from your files\u2019 tags. Scan a '
                 'folder, or fix a missing album tag with the tag editor.',
           );
         }
-        return GridView.builder(
-          padding: const EdgeInsets.all(12),
-          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-            maxCrossAxisExtent: 220,
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            childAspectRatio: 0.78,
-          ),
-          itemCount: list.length,
-          itemBuilder: (context, index) {
-            final album = list[index];
-            return _AlbumCard(album: album);
-          },
+        return AlphabetGrid(
+          labels: list.map((a) => a.album).toList(),
+          itemBuilder: (context, index) => _AlbumCard(album: list[index]),
         );
       },
     );
@@ -59,7 +51,7 @@ class _AlbumCard extends StatelessWidget {
     final theme = Theme.of(context);
     return InkWell(
       borderRadius: BorderRadius.circular(12),
-      onTap: () => context.push('/album/${Uri.encodeComponent(album.album)}'),
+      onTap: () => context.push('/album/${Uri.encodeComponent(album.key)}'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -78,15 +70,20 @@ class _AlbumCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          Text(album.album,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodyMedium),
-          Text(album.artist,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+          Text(
+            album.album,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodyMedium,
+          ),
+          Text(
+            album.artist,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
         ],
       ),
     );
@@ -109,12 +106,13 @@ class ArtistsList extends ConsumerWidget {
           return const EmptyStateView(
             icon: Icons.person_outline,
             title: 'No artists yet',
-            message: 'Artists come from your files\u2019 tags. Scan a folder '
+            message:
+                'Artists come from your files\u2019 tags. Scan a folder '
                 'to fill this in.',
           );
         }
-        return ListView.builder(
-          itemCount: list.length,
+        return AlphabetList(
+          labels: list.map((a) => a.artist).toList(),
           itemBuilder: (context, index) {
             final artist = list[index];
             return ListTile(
@@ -122,16 +120,21 @@ class ArtistsList extends ConsumerWidget {
                 artPath: artist.albumArtPath,
                 seed: artist.artist,
               ),
-              title: Text(artist.artist,
-                  maxLines: 1, overflow: TextOverflow.ellipsis),
+              title: Text(
+                artist.artist,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
               subtitle: Text(
                 '${artist.albumCount} album${artist.albumCount == 1 ? '' : 's'} · '
                 '${artist.trackCount} track${artist.trackCount == 1 ? '' : 's'}',
               ),
-              trailing: Text(formatDurationMs(artist.totalMs),
-                  style: Theme.of(context).textTheme.bodySmall),
-              onTap: () => context
-                  .push('/artist/${Uri.encodeComponent(artist.artist)}'),
+              trailing: Text(
+                formatDurationMs(artist.totalMs),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              onTap: () =>
+                  context.push('/artist/${Uri.encodeComponent(artist.artist)}'),
             );
           },
         );
@@ -156,7 +159,8 @@ class FoldersList extends ConsumerWidget {
           return const EmptyStateView(
             icon: Icons.folder_outlined,
             title: 'No folders yet',
-            message: 'This mirrors the directories your audio files actually '
+            message:
+                'This mirrors the directories your audio files actually '
                 'live in. Scan a folder to see them here.',
           );
         }
@@ -166,14 +170,22 @@ class FoldersList extends ConsumerWidget {
             final folder = list[index];
             return ListTile(
               leading: const Icon(Icons.folder),
-              title: Text(folder.name.isEmpty ? folder.path : folder.name,
-                  maxLines: 1, overflow: TextOverflow.ellipsis),
-              subtitle: Text(folder.path,
-                  maxLines: 1, overflow: TextOverflow.ellipsis),
-              trailing: Text('${folder.trackCount}',
-                  style: Theme.of(context).textTheme.bodySmall),
-              onTap: () => context
-                  .push('/folder/${Uri.encodeComponent(folder.path)}'),
+              title: Text(
+                folder.name.isEmpty ? folder.path : folder.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Text(
+                folder.path,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: Text(
+                '${folder.trackCount}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              onTap: () =>
+                  context.push('/folder/${Uri.encodeComponent(folder.path)}'),
             );
           },
         );
@@ -198,11 +210,11 @@ class AlbumDetailScreen extends ConsumerWidget {
     final artist = (list == null || list.isEmpty)
         ? null
         : (list.map((t) => t.artist).toSet().length > 1
-            ? 'Various artists'
-            : list.first.artist);
+              ? 'Various artists'
+              : list.first.artist);
 
     return TrackListScreen(
-      title: album,
+      title: album.split('\u001f').first,
       subtitle: artist,
       artPath: (list == null || list.isEmpty) ? null : list.first.albumArtPath,
       tracks: tracks,
