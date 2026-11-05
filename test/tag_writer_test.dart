@@ -199,12 +199,25 @@ void main() {
   });
 
   group('MP3', () {
-    const fixtures = 'test_files/same_song';
+    test(
+      'MP3 title and rating edits round trip together through the scanner',
+      () async {
+        final file = await write('rated.mp3', _mp3());
+        expect(
+          applyTagEditToFile(
+            file.path,
+            const TagEdit(title: 'Rated title', rating: 3),
+          ),
+          TagFileResult.written,
+        );
+        final tags = parseTags(file.path);
+        expect(tags.title, 'Rated title');
+        expect(tags.rating, 3);
+      },
+    );
 
     test('writes tags and keeps every audio frame', () async {
-      final original = await File(
-        '$fixtures/2-add-after/Night Drive.mp3',
-      ).readAsBytes();
+      final original = _mp3();
       final file = await write('a.mp3', original);
       final before = readMetadata(file);
 
@@ -222,9 +235,7 @@ void main() {
     });
 
     test('an untagged MP3 has no writer and is left alone', () async {
-      final original = await File(
-        '$fixtures/2-add-after/Paper Moon.mp3',
-      ).readAsBytes();
+      final original = _mp3(tagged: false);
       final file = await write('b.mp3', original);
 
       expect(applyTagEditToFile(file.path, edit), TagFileResult.unsupported);
@@ -236,6 +247,21 @@ void main() {
 // ---------------------------------------------------------------------------
 // Fixture builders
 // ---------------------------------------------------------------------------
+
+/// MPEG-1 Layer III frames: 128 kbit/s, 44.1 kHz, with silent payloads.
+Uint8List _mp3({bool tagged = true}) {
+  final frame = [0xff, 0xfb, 0x90, 0x00, ...List<int>.filled(413, 0)];
+  return Uint8List.fromList([
+    if (tagged)
+      ..._id3({
+        'TIT2': 'Test track',
+        'TPE1': 'Test artist',
+        'TALB': 'Test album',
+        'TLEN': '2606',
+      }),
+    for (var i = 0; i < 100; i++) ...frame,
+  ]);
+}
 
 Uint8List _noise(int length) {
   final random = Random(length);

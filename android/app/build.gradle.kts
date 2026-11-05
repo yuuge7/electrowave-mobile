@@ -45,6 +45,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Emulator/integration runs must never uninstall the signed app
+            // or replace its library, settings, grants and pinned widgets.
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-dev"
+        }
         release {
             // Signed with the release key from android/key.properties when present
             // (local machine + CI); falls back to debug so clean checkouts still build.

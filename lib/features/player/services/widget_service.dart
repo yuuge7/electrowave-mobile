@@ -54,7 +54,9 @@ class WidgetService {
         'ElectrowaveArtWidgetProvider',
         'ElectrowaveWideWidgetProvider',
       ]) {
-        await HomeWidget.updateWidget(androidName: provider);
+        await HomeWidget.updateWidget(
+          qualifiedAndroidName: 'com.example.electrowave_mobile.$provider',
+        );
       }
     } catch (_) {
       // No widget placed, or the platform channel isn't available — neither

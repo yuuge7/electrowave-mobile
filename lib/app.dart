@@ -160,21 +160,18 @@ final GoRouter appRouter = GoRouter(
     // albums/artists/folders have no numeric ids.
     GoRoute(
       path: '/album/:name',
-      builder: (context, state) => AlbumDetailScreen(
-        album: Uri.decodeComponent(state.pathParameters['name'] ?? ''),
-      ),
+      builder: (context, state) =>
+          AlbumDetailScreen(album: state.pathParameters['name'] ?? ''),
     ),
     GoRoute(
       path: '/artist/:name',
-      builder: (context, state) => ArtistDetailScreen(
-        artist: Uri.decodeComponent(state.pathParameters['name'] ?? ''),
-      ),
+      builder: (context, state) =>
+          ArtistDetailScreen(artist: state.pathParameters['name'] ?? ''),
     ),
     GoRoute(
       path: '/folder/:path',
-      builder: (context, state) => FolderDetailScreen(
-        folderPath: Uri.decodeComponent(state.pathParameters['path'] ?? ''),
-      ),
+      builder: (context, state) =>
+          FolderDetailScreen(folderPath: state.pathParameters['path'] ?? ''),
     ),
     GoRoute(
       path: '/smart/:list',

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/database.dart';
+import '../../../core/services/local_log.dart';
 import '../../../core/database/database_provider.dart';
 import '../../../shared/widgets/track_context_menu.dart';
 import '../../player/providers/player_providers.dart';
@@ -51,80 +52,149 @@ Future<void> editManyTags(
   WidgetRef ref,
   List<Track> tracks,
 ) async {
-  final artist = TextEditingController(),
-      album = TextEditingController(),
-      genre = TextEditingController(),
-      year = TextEditingController();
-  final save = await showDialog<bool>(
+  final writer = ref.read(tagWriterProvider);
+  final message = await showDialog<String>(
     context: context,
-    builder: (c) => AlertDialog(
-      title: Text('Edit ${tracks.length} tracks'),
+    barrierDismissible: false,
+    builder: (_) => _BulkTagEditor(tracks: tracks, writer: writer),
+  );
+  if (message != null && context.mounted) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+}
+
+class _BulkTagEditor extends StatefulWidget {
+  const _BulkTagEditor({required this.tracks, required this.writer});
+  final List<Track> tracks;
+  final TagWriter writer;
+
+  @override
+  State<_BulkTagEditor> createState() => _BulkTagEditorState();
+}
+
+class _BulkTagEditorState extends State<_BulkTagEditor> {
+  final _artist = TextEditingController(),
+      _album = TextEditingController(),
+      _genre = TextEditingController(),
+      _year = TextEditingController();
+  final _form = GlobalKey<FormState>();
+  bool _saving = false;
+  int _processed = 0;
+
+  @override
+  void dispose() {
+    for (final c in [_artist, _album, _genre, _year]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (!_form.currentState!.validate()) return;
+    String? value(TextEditingController c) =>
+        c.text.trim().isEmpty ? null : c.text.trim();
+    final edit = TagEdit(
+      artist: value(_artist),
+      album: value(_album),
+      genre: value(_genre),
+      year: int.tryParse(_year.text.trim()),
+    );
+    if (edit.artist == null &&
+        edit.album == null &&
+        edit.genre == null &&
+        edit.year == null) {
+      Navigator.pop(context, 'No tags changed');
+      return;
+    }
+    setState(() => _saving = true);
+    final writer = widget.writer;
+    final tracks = widget.tracks;
+    var failed = 0;
+    for (final track in tracks) {
+      try {
+        if (await writer.apply(track, edit) != null) failed++;
+      } catch (e, s) {
+        LocalLog.record(e, s);
+        failed++;
+      }
+      if (mounted) setState(() => _processed++);
+    }
+    if (!mounted) return;
+    Navigator.pop(
+      context,
+      failed == 0
+          ? 'Tags updated'
+          : '$failed of ${tracks.length} tracks could not be fully written',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+    canPop: !_saving,
+    child: AlertDialog(
+      title: Text('Edit ${widget.tracks.length} tracks'),
       content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Blank fields stay unchanged. Saving writes these tags to your music files.',
-            ),
-            TextField(
-              controller: artist,
-              decoration: const InputDecoration(labelText: 'Artist'),
-            ),
-            TextField(
-              controller: album,
-              decoration: const InputDecoration(labelText: 'Album'),
-            ),
-            TextField(
-              controller: genre,
-              decoration: const InputDecoration(labelText: 'Genre'),
-            ),
-            TextField(
-              controller: year,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Year'),
-            ),
-          ],
+        child: Form(
+          key: _form,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Blank fields stay unchanged. Saving writes these tags to your music files.',
+              ),
+              TextFormField(
+                enabled: !_saving,
+                controller: _artist,
+                decoration: const InputDecoration(labelText: 'Artist'),
+              ),
+              TextFormField(
+                enabled: !_saving,
+                controller: _album,
+                decoration: const InputDecoration(labelText: 'Album'),
+              ),
+              TextFormField(
+                enabled: !_saving,
+                controller: _genre,
+                decoration: const InputDecoration(labelText: 'Genre'),
+              ),
+              TextFormField(
+                enabled: !_saving,
+                controller: _year,
+                validator: (v) {
+                  if (v == null || v.trim().isEmpty) return null;
+                  final y = int.tryParse(v.trim());
+                  return y != null && y > 0 && y <= 9999
+                      ? null
+                      : 'Enter a year from 1 to 9999';
+                },
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Year'),
+              ),
+              if (_saving) ...[
+                const SizedBox(height: 16),
+                LinearProgressIndicator(
+                  value: _processed / widget.tracks.length,
+                ),
+                Text('Saved $_processed/${widget.tracks.length}'),
+              ],
+            ],
+          ),
         ),
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(c, false),
+          onPressed: _saving ? null : () => Navigator.pop(context),
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: () => Navigator.pop(c, true),
+          onPressed: _saving ? null : _save,
           child: const Text('Save tags'),
         ),
       ],
     ),
   );
-  String? value(TextEditingController c) =>
-      c.text.trim().isEmpty ? null : c.text.trim();
-  final edit = TagEdit(
-    artist: value(artist),
-    album: value(album),
-    genre: value(genre),
-    year: int.tryParse(year.text),
-  );
-  for (final c in [artist, album, genre, year]) {
-    c.dispose();
-  }
-  if (save != true) return;
-  var failed = 0;
-  for (final track in tracks) {
-    if (await ref.read(tagWriterProvider).apply(track, edit) != null) failed++;
-  }
-  if (context.mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          failed == 0
-              ? 'Tags updated'
-              : 'Library updated; $failed files could not be written',
-        ),
-      ),
-    );
-  }
 }
 
 class BulkActions extends ConsumerWidget {
@@ -151,6 +221,9 @@ class BulkActions extends ConsumerWidget {
         PopupMenuButton<String>(
           tooltip: 'Selection actions',
           onSelected: (action) async {
+            final selection = ref.read(librarySelectionProvider.notifier);
+            final db = ref.read(databaseProvider);
+            final player = ref.read(playerControllerProvider.notifier);
             switch (action) {
               case 'queue':
                 ref
@@ -162,13 +235,11 @@ class BulkActions extends ConsumerWidget {
                 await editManyTags(context, ref, selected);
               case 'remove':
                 for (final t in selected) {
-                  await ref.read(databaseProvider).softDeleteTrack(t.id);
-                  ref
-                      .read(playerControllerProvider.notifier)
-                      .removeTrackFromQueues(t.id);
+                  await db.softDeleteTrack(t.id);
+                  player.removeTrackFromQueues(t.id);
                 }
             }
-            ref.read(librarySelectionProvider.notifier).state = {};
+            selection.state = {};
           },
           itemBuilder: (_) => const [
             PopupMenuItem(value: 'queue', child: Text('Add to queue')),

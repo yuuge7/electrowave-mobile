@@ -61,6 +61,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
     // "no results" copy both react without a local setState.
     final searching = ref.watch(librarySearchInputProvider).isNotEmpty;
 
+    ref.listen(librarySearchInputProvider, (_, _) {
+      // Selection applies to the visible result set. Never leave hidden IDs
+      // selected behind an empty search result or a different filter.
+      ref.read(librarySelectionProvider.notifier).state = {};
+    });
+
     ref.listen(scanControllerProvider, (previous, current) {
       final message = current.message;
       if (message != null && previous?.message != message) {
@@ -253,6 +259,9 @@ class _TracksTab extends ConsumerWidget {
                   final track = tracks[index];
                   return TrackTile(
                     track: track,
+                    selectionMode: ref
+                        .watch(librarySelectionProvider)
+                        .isNotEmpty,
                     selected: ref
                         .watch(librarySelectionProvider)
                         .contains(track.id),

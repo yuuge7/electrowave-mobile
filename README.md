@@ -55,6 +55,8 @@ flutter build apk --release
 
 APK lands in `build/app/outputs/flutter-apk/app-release.apk`.
 
+Debug builds install as **Electrowave Dev** (`com.example.electrowave_mobile.debug`) with their own library. Release builds keep the original application ID.
+
 ## Tech stack
 
 Flutter · Riverpod · go_router · media_kit · drift/SQLite · audio_metadata_reader · audio_service
@@ -105,15 +107,7 @@ Non-obvious constraints — breaking these produces bugs that only show up after
 
 Run `flutter analyze` and `flutter test` before a release; CI now enforces both. Migration tests rebuild historical schemas 1–5, backup tests exercise restore/undo/rejection/interrupted recovery, and the search test uses 10,500 tracks.
 
-The Android integration test uses 10,053 tracks, real PCM fixtures, native waveform/loudness decoding, incremental scans, private-session recording, audio filters and two-track queue transitions:
-
-```powershell
-flutter test integration_test/app_test.dart -d emulator-5554 --reporter expanded *> emulator-tests.log
-```
-
-Run `scripts/monitor-emulator-test.ps1` in another terminal to switch the **emulator** screen off and force doze during its sleep test. The script refuses physical devices and restores emulator power state afterwards. Grant the test installation's notification/audio permissions first so a system permission dialog does not cover the test.
-
-See [the validation report](docs/VALIDATION.md) for results and hardware checks that still require a real phone.
+Tests generate their audio and database fixtures in temporary directories; no sample music, emulator harnesses or QA output is required in the repository. Check playback, widgets, backups and recovery on an Android emulator before a release. Headphone, Bluetooth and manufacturer-specific sleep behaviour also need real-device checks.
 
 ## License
 

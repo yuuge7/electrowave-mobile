@@ -38,6 +38,7 @@ final platformBootstrapProvider = FutureProvider<void>((ref) async {
       await WidgetService().update(
         track: live,
         playing: ref.read(audioHandlerProvider).playing,
+        positionMs: ref.read(audioHandlerProvider).position.inMilliseconds,
       );
       return;
     }

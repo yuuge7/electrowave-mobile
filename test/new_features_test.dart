@@ -7,8 +7,6 @@ import 'package:electrowave_mobile/core/database/database.dart';
 import 'package:electrowave_mobile/core/database/database_provider.dart';
 import 'package:electrowave_mobile/features/stats/views/listening_extras_screen.dart';
 import 'package:electrowave_mobile/features/library/services/rating_tags.dart';
-import 'package:electrowave_mobile/features/library/services/tag_writer.dart';
-import 'package:electrowave_mobile/features/library/services/library_scanner.dart';
 import 'package:electrowave_mobile/features/playlists/services/playlist_file_service.dart';
 
 void main() {
@@ -84,29 +82,6 @@ void main() {
     );
     expect(ours.sublist(ours.length - audio.length), audio);
   });
-  test(
-    'MP3 title and rating edits round trip together through the scanner',
-    () async {
-      final dir = await Directory.systemTemp.createTemp('electrowave_rating_');
-      try {
-        final file = await File(
-          'test_files/same_song/2-add-after/Night Drive.mp3',
-        ).copy('${dir.path}/rated.mp3');
-        expect(
-          applyTagEditToFile(
-            file.path,
-            const TagEdit(title: 'Rated title', rating: 3),
-          ),
-          TagFileResult.written,
-        );
-        final tags = parseTags(file.path);
-        expect(tags.title, 'Rated title');
-        expect(tags.rating, 3);
-      } finally {
-        await dir.delete(recursive: true);
-      }
-    },
-  );
   test(
     'MP3 ratings round trip without changing audio; repeat edits replace only our frame',
     () {

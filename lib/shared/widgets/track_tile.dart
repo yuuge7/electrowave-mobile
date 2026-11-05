@@ -18,10 +18,12 @@ class TrackTile extends ConsumerWidget {
     this.trailingExtra,
     this.onLongPress,
     this.selected = false,
+    this.selectionMode = false,
   });
 
   final VoidCallback? onLongPress;
   final bool selected;
+  final bool selectionMode;
   final Track track;
   final VoidCallback onTap;
   final bool showAlbum;
@@ -43,7 +45,7 @@ class TrackTile extends ConsumerWidget {
         : track.artist;
 
     return ListTile(
-      onTap: missing
+      onTap: missing && !selectionMode
           ? () => ScaffoldMessenger.of(context)
               ..hideCurrentSnackBar()
               ..showSnackBar(

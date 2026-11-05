@@ -348,7 +348,10 @@ class SettingsScreen extends ConsumerWidget {
                 ),
               );
               if (provider != null) {
-                await HomeWidget.requestPinWidget(androidName: provider);
+                await HomeWidget.requestPinWidget(
+                  qualifiedAndroidName:
+                      'com.example.electrowave_mobile.$provider',
+                );
               }
             },
           ),
@@ -496,7 +499,9 @@ class SettingsScreen extends ConsumerWidget {
                 ),
               );
               if (confirmed == true) {
-                await ref.read(databaseProvider).clearPlayHistory();
+                await ref
+                    .read(playerControllerProvider.notifier)
+                    .clearPlayHistory();
                 if (context.mounted) _toast(context, 'Play history cleared');
               }
             },

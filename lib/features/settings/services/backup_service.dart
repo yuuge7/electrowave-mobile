@@ -8,6 +8,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqlite3/sqlite3.dart';
 import '../../../core/database/database.dart';
 import '../../../core/services/local_log.dart';
+import '../../player/services/playback_persistence.dart';
+import 'settings_persistence.dart';
 
 const kStagedImportFileName = 'staged_import.ewbackup';
 const kBackupSchemaVersion = 6;
@@ -88,8 +90,28 @@ class BackupBundle {
       throw const FormatException('Backup has no database');
     }
     for (final name in _supportFiles) {
-      if (files[name] != null &&
-          jsonDecode(utf8.decode(files[name]!)) is! Map) {
+      if (files[name] == null) continue;
+      final value = jsonDecode(utf8.decode(files[name]!));
+      if (value is! Map<String, dynamic>) {
+        throw FormatException('Invalid $name');
+      }
+      try {
+        if (name == 'settings.json') AppSettings.fromJson(value);
+        if (name == 'playback_state.json' &&
+            PersistedPlayback.fromJson(value) == null) {
+          throw const FormatException('Invalid queue');
+        }
+        if (name == 'library.json') {
+          final folders = value['folders'];
+          if (folders != null &&
+              (folders is! List || folders.any((v) => v is! String))) {
+            throw const FormatException('Invalid folders');
+          }
+          if (value['descending'] != null && value['descending'] is! bool) {
+            throw const FormatException('Invalid sort direction');
+          }
+        }
+      } catch (_) {
         throw FormatException('Invalid $name');
       }
     }
@@ -120,6 +142,10 @@ class BackupService {
           'artist',
           'album',
           'duration_ms',
+          'genre',
+          'album_art_path',
+          'date_added',
+          'last_played',
           'is_deleted',
           'total_play_count',
         ],

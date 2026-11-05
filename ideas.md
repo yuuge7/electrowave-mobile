@@ -112,7 +112,7 @@ What keeps the app from breaking as it grows.
 
 ---
 
-**Android implementation:** all 40 items are implemented and checked on the Android emulator. See [validation and format limits](docs/VALIDATION.md). The physical-phone checks for section 6 remain pending; emulator checks do not certify real headphones, Bluetooth or OEM sleep behaviour.
+**Android implementation:** all 40 items have implementations. Revalidated 5 November 2026 with 251 unit/widget tests, Android emulator checks and signed-release UI checks. The physical-phone checks for section 6 remain pending; emulator checks do not certify real headphones, Bluetooth or OEM sleep behaviour.
 
 ## Do NOT do
 

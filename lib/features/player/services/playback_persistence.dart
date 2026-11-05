@@ -50,14 +50,16 @@ class PersistedPlayback {
       return PersistedPlayback(
         currentTrackId: json['currentTrackId'] as int?,
         positionMs: (json['positionMs'] as num?)?.toInt() ?? 0,
-        contextTrackIds: (json['contextTrackIds'] as List? ?? const [])
-            .cast<int>(),
+        contextTrackIds: List<int>.from(
+          json['contextTrackIds'] as List? ?? const [],
+        ),
         contextName: json['contextName'] as String? ?? '',
-        manualQueueIds: (json['manualQueueIds'] as List? ?? const [])
-            .cast<int>(),
+        manualQueueIds: List<int>.from(
+          json['manualQueueIds'] as List? ?? const [],
+        ),
         contextIndex: (json['contextIndex'] as num?)?.toInt() ?? -1,
         shuffle: json['shuffle'] as bool? ?? false,
-        shuffleOrder: (json['shuffleOrder'] as List? ?? const []).cast<int>(),
+        shuffleOrder: List<int>.from(json['shuffleOrder'] as List? ?? const []),
         repeatIndex: (json['repeatIndex'] as num?)?.toInt() ?? 0,
         fromManualQueue: json['fromManualQueue'] as bool? ?? false,
       );

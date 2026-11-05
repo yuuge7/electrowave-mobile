@@ -26,8 +26,12 @@ class AudioAnalyzer {
   static final Map<String, Future<AudioAnalysisResult>> _pending = {};
   static Future<AudioAnalysisResult> analyze(Track track) async {
     final stat = await File(track.filePath).stat();
+    var pathHash = 2166136261;
+    for (final byte in utf8.encode(track.filePath)) {
+      pathHash = ((pathHash ^ byte) * 16777619) & 0xffffffff;
+    }
     final key =
-        '${track.id}-${stat.size}-${stat.modified.millisecondsSinceEpoch}';
+        '${track.id}-${pathHash.toRadixString(16)}-${stat.size}-${stat.modified.millisecondsSinceEpoch}';
     return _pending
         .putIfAbsent(key, () => _analyze(track, key))
         .whenComplete(() => _pending.remove(key));
@@ -39,16 +43,24 @@ class AudioAnalyzer {
     await dir.create(recursive: true);
     final cache = File('${dir.path}/$key.json');
     if (await cache.exists()) {
-      return AudioAnalysisResult.fromJson(
-        jsonDecode(await cache.readAsString()) as Map,
-      );
+      try {
+        final json = jsonDecode(await cache.readAsString()) as Map;
+        if (json['source'] == track.filePath) {
+          return AudioAnalysisResult.fromJson(json);
+        }
+      } catch (_) {
+        // Derived data can always be rebuilt after a partial cache write.
+      }
     }
     final json = await channel.invokeMapMethod<String, dynamic>('analyze', {
       'path': track.filePath,
     });
     if (json == null) throw StateError('Audio analysis unavailable');
     final result = AudioAnalysisResult.fromJson(json);
-    await cache.writeAsString(jsonEncode(result.toJson()), flush: true);
+    await cache.writeAsString(
+      jsonEncode({...result.toJson(), 'source': track.filePath}),
+      flush: true,
+    );
     return result;
   }
 }

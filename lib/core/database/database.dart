@@ -348,24 +348,28 @@ class AppDatabase extends _$AppDatabase {
       'CREATE INDEX IF NOT EXISTS history_track ON playback_history(track_id,played_at)',
     );
     final exists = await customSelect(
-      "SELECT name FROM sqlite_master WHERE name='track_search'",
+      "SELECT name FROM sqlite_master WHERE name IN ('track_search', 'track_search_insert', 'track_search_delete', 'track_search_update')",
     ).get();
-    if (exists.isNotEmpty) return;
-    await customStatement(
-      "CREATE VIRTUAL TABLE track_search USING fts5(title,artist,album,genre,content='tracks',content_rowid='id',tokenize='unicode61 remove_diacritics 2')",
-    );
-    await customStatement(
-      "CREATE TRIGGER track_search_insert AFTER INSERT ON tracks BEGIN INSERT INTO track_search(rowid,title,artist,album,genre) VALUES(new.id,new.title,new.artist,new.album,new.genre); END",
-    );
-    await customStatement(
-      "CREATE TRIGGER track_search_delete AFTER DELETE ON tracks BEGIN INSERT INTO track_search(track_search,rowid,title,artist,album,genre) VALUES('delete',old.id,old.title,old.artist,old.album,old.genre); END",
-    );
-    await customStatement(
-      "CREATE TRIGGER track_search_update AFTER UPDATE OF title,artist,album,genre ON tracks BEGIN INSERT INTO track_search(track_search,rowid,title,artist,album,genre) VALUES('delete',old.id,old.title,old.artist,old.album,old.genre); INSERT INTO track_search(rowid,title,artist,album,genre) VALUES(new.id,new.title,new.artist,new.album,new.genre); END",
-    );
-    await customStatement(
-      "INSERT INTO track_search(track_search) VALUES('rebuild')",
-    );
+    if (exists.length == 4) return;
+    // Repair a partially created index after an interrupted startup/restore.
+    // Keeping the table without all its triggers silently drops search results.
+    await transaction(() async {
+      await customStatement(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS track_search USING fts5(title,artist,album,genre,content='tracks',content_rowid='id',tokenize='unicode61 remove_diacritics 2')",
+      );
+      await customStatement(
+        "CREATE TRIGGER IF NOT EXISTS track_search_insert AFTER INSERT ON tracks BEGIN INSERT INTO track_search(rowid,title,artist,album,genre) VALUES(new.id,new.title,new.artist,new.album,new.genre); END",
+      );
+      await customStatement(
+        "CREATE TRIGGER IF NOT EXISTS track_search_delete AFTER DELETE ON tracks BEGIN INSERT INTO track_search(track_search,rowid,title,artist,album,genre) VALUES('delete',old.id,old.title,old.artist,old.album,old.genre); END",
+      );
+      await customStatement(
+        "CREATE TRIGGER IF NOT EXISTS track_search_update AFTER UPDATE OF title,artist,album,genre ON tracks BEGIN INSERT INTO track_search(track_search,rowid,title,artist,album,genre) VALUES('delete',old.id,old.title,old.artist,old.album,old.genre); INSERT INTO track_search(rowid,title,artist,album,genre) VALUES(new.id,new.title,new.artist,new.album,new.genre); END",
+      );
+      await customStatement(
+        "INSERT INTO track_search(track_search) VALUES('rebuild')",
+      );
+    });
   }
 
   static QueryExecutor _openConnection() {
@@ -452,8 +456,16 @@ class AppDatabase extends _$AppDatabase {
 
   Future<List<Track>> tracksByIds(List<int> ids) async {
     if (ids.isEmpty) return const [];
-    final rows = await (select(tracks)..where((t) => t.id.isIn(ids))).get();
-    final byId = {for (final r in rows) r.id: r};
+    // A full-library queue can exceed SQLite's variable limit. Fetch unique
+    // IDs in bounded batches, then reconstruct order (including repeats).
+    final unique = ids.toSet().toList();
+    final byId = <int, Track>{};
+    for (var start = 0; start < unique.length; start += 500) {
+      final rows = await (select(
+        tracks,
+      )..where((t) => t.id.isIn(unique.skip(start).take(500)))).get();
+      byId.addAll({for (final row in rows) row.id: row});
+    }
     return [
       for (final id in ids)
         if (byId[id] != null) byId[id]!,
@@ -667,6 +679,19 @@ class AppDatabase extends _$AppDatabase {
         TracksCompanion(
           filePath: takeFile ? Value(from.filePath) : const Value.absent(),
           durationMs: takeFile ? Value(from.durationMs) : const Value.absent(),
+          fileSize: takeFile ? Value(from.fileSize) : const Value.absent(),
+          fileModifiedMs: takeFile
+              ? Value(from.fileModifiedMs)
+              : const Value.absent(),
+          albumArtist: Value(kept.albumArtist ?? from.albumArtist),
+          rating: Value(kept.rating > from.rating ? kept.rating : from.rating),
+          startCount: Value(kept.startCount + from.startCount),
+          skipCount: Value(kept.skipCount + from.skipCount),
+          replayGainDb: Value(
+            takeFile
+                ? from.replayGainDb
+                : kept.replayGainDb ?? from.replayGainDb,
+          ),
           genre: Value(kept.genre ?? from.genre),
           albumArtPath: Value(kept.albumArtPath ?? from.albumArtPath),
           trackNumber: Value(kept.trackNumber ?? from.trackNumber),
@@ -994,6 +1019,8 @@ class AppDatabase extends _$AppDatabase {
       await update(tracks).write(
         const TracksCompanion(
           totalPlayCount: Value(0),
+          startCount: Value(0),
+          skipCount: Value(0),
           lastPlayed: Value(null),
         ),
       );

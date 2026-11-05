@@ -38,6 +38,67 @@ class PlayerQueueState {
     this.repeat = RepeatMode.off,
   });
 
+  factory PlayerQueueState.restored(
+    PersistedPlayback saved, {
+    required Track current,
+    required List<Track> contextTracks,
+    required List<Track> manualTracks,
+  }) {
+    final byId = {
+      for (final t in contextTracks)
+        if (!t.isDeleted) t.id: t,
+    };
+    final context = <Track>[];
+    final newIndex = <int, int>{};
+    for (var i = 0; i < saved.contextTrackIds.length; i++) {
+      final track = byId[saved.contextTrackIds[i]];
+      if (track != null) {
+        newIndex[i] = context.length;
+        context.add(track);
+      }
+    }
+    // Deleted rows and folded duplicates can disappear between snapshots.
+    // Remap the anchor and permutation instead of clamping their old indices.
+    var anchor = -1;
+    for (final entry in newIndex.entries) {
+      if (entry.key <= saved.contextIndex) anchor = entry.value;
+    }
+    if (!saved.fromManualQueue &&
+        (anchor < 0 || context[anchor].id != current.id)) {
+      final actual = context.indexWhere((t) => t.id == current.id);
+      if (actual >= 0) anchor = actual;
+    }
+    final validOrder =
+        saved.shuffleOrder.length == saved.contextTrackIds.length &&
+        saved.shuffleOrder.toSet().length == saved.contextTrackIds.length &&
+        saved.shuffleOrder.every(
+          (i) => i >= 0 && i < saved.contextTrackIds.length,
+        );
+    return PlayerQueueState(
+      current: current,
+      context: context,
+      contextIndex: anchor,
+      contextName: saved.contextName,
+      manualQueue: manualTracks.where((t) => !t.isDeleted).toList(),
+      fromManualQueue: saved.fromManualQueue,
+      shuffle: saved.shuffle,
+      shuffleOrder: !saved.shuffle
+          ? const []
+          : validOrder
+          ? [
+              for (final i in saved.shuffleOrder)
+                if (newIndex[i] != null) newIndex[i]!,
+            ]
+          : [
+              if (anchor >= 0) anchor,
+              for (var i = 0; i < context.length; i++)
+                if (i != anchor) i,
+            ],
+      repeat: RepeatMode
+          .values[saved.repeatIndex.clamp(0, RepeatMode.values.length - 1)],
+    );
+  }
+
   final Track? current;
 
   /// True when [current] was pulled from the manual queue; [contextIndex]
@@ -105,6 +166,7 @@ class PlayerController extends Notifier<PlayerQueueState> {
   DateTime _lastWidget = DateTime.fromMillisecondsSinceEpoch(0);
   bool _startBooked = false;
   bool _loading = false;
+  int _loadGeneration = 0;
   Future<void> _transition = Future.value();
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<Track?>? _liveTrackSub;
@@ -148,7 +210,13 @@ class PlayerController extends Notifier<PlayerQueueState> {
     // Keep the home screen widget in step with play/pause. Track changes push
     // their own update from _loadAndPlay.
     final playingSub = _handler.player.stream.playing.listen((playing) {
-      unawaited(_widgets.update(track: state.current, playing: playing));
+      unawaited(
+        _widgets.update(
+          track: state.current,
+          playing: playing,
+          positionMs: _handler.position.inMilliseconds,
+        ),
+      );
       // Pausing is the natural point to bank the running total: the app is
       // most likely to be killed while nothing is playing, and the throttled
       // flush would otherwise lose the last stretch.
@@ -183,6 +251,7 @@ class PlayerController extends Notifier<PlayerQueueState> {
     List<Track> contextTracks,
     String contextName,
   ) async {
+    await restore();
     final index = contextTracks.indexWhere((t) => t.id == track.id);
     var next = state.copyWith(
       context: List.of(contextTracks),
@@ -204,6 +273,7 @@ class PlayerController extends Notifier<PlayerQueueState> {
     List<Track> contextTracks,
     String contextName,
   ) async {
+    await restore();
     if (contextTracks.isEmpty) return;
     final start = _random.nextInt(contextTracks.length);
     state = state.copyWith(
@@ -218,6 +288,7 @@ class PlayerController extends Notifier<PlayerQueueState> {
   }
 
   Future<void> togglePlayPause() async {
+    await restore();
     if (state.current == null) return;
     if (_handler.playing) {
       await _handler.pause();
@@ -233,6 +304,7 @@ class PlayerController extends Notifier<PlayerQueueState> {
   /// false loads the next track paused (the sleep timer moving the queue on
   /// before closing the app).
   Future<void> next({bool auto = false, bool play = true}) async {
+    await restore();
     final s = state;
     if (!auto &&
         s.current != null &&
@@ -273,6 +345,7 @@ class PlayerController extends Notifier<PlayerQueueState> {
   }
 
   Future<void> previous() async {
+    await restore();
     final s = state;
     if (s.current == null) return;
 
@@ -340,6 +413,7 @@ class PlayerController extends Notifier<PlayerQueueState> {
 
   void clearQueue() {
     state = state.copyWith(
+      fromManualQueue: false,
       manualQueue: [],
       context: state.current == null ? [] : [state.current!],
       contextIndex: state.current == null ? -1 : 0,
@@ -351,6 +425,15 @@ class PlayerController extends Notifier<PlayerQueueState> {
   Future<void> flushState() async {
     await _flushListening();
     await _saveState();
+  }
+
+  Future<void> clearPlayHistory() async {
+    // Close the live session before deleting it; otherwise future flushes keep
+    // updating a deleted row until the next track is loaded.
+    await _resetListening();
+    await _db.clearPlayHistory();
+    _playsBooked = 0;
+    _startBooked = false;
   }
 
   void addToQueue(Track track) {
@@ -377,6 +460,7 @@ class PlayerController extends Notifier<PlayerQueueState> {
 
   /// Tap on a manual queue entry: play it now and drop it from the queue.
   Future<void> playManualQueueItem(int index) async {
+    await restore();
     if (index < 0 || index >= state.manualQueue.length) return;
     final track = state.manualQueue[index];
     final queue = List.of(state.manualQueue)..removeAt(index);
@@ -386,6 +470,7 @@ class PlayerController extends Notifier<PlayerQueueState> {
 
   /// Tap on an upcoming context entry: jump the context to it.
   Future<void> playContextTrack(Track track) async {
+    await restore();
     final index = state.context.indexWhere((t) => t.id == track.id);
     if (index < 0) return;
     state = state.copyWith(contextIndex: index, fromManualQueue: false);
@@ -399,7 +484,11 @@ class PlayerController extends Notifier<PlayerQueueState> {
     await _handler.pause();
     await _flushListening();
     await _saveState();
-    await _widgets.update(track: state.current, playing: false);
+    await _widgets.update(
+      track: state.current,
+      playing: false,
+      positionMs: _handler.position.inMilliseconds,
+    );
   }
 
   /// Drop a track everywhere it appears (after a library soft delete).
@@ -412,10 +501,10 @@ class PlayerController extends Notifier<PlayerQueueState> {
     if (contextIdx >= 0) {
       final newContext = List.of(s.context)..removeAt(contextIdx);
       var newIndex = s.contextIndex;
-      if (contextIdx < newIndex) newIndex -= 1;
+      if (contextIdx <= newIndex) newIndex -= 1;
       newIndex = newContext.isEmpty
           ? -1
-          : newIndex.clamp(0, newContext.length - 1);
+          : newIndex.clamp(-1, newContext.length - 1);
       next = next.copyWith(
         context: newContext,
         contextIndex: newIndex,
@@ -449,30 +538,11 @@ class PlayerController extends Notifier<PlayerQueueState> {
       return;
     }
 
-    var contextIndex = saved.contextIndex;
-    if (contextIndex >= contextTracks.length) {
-      contextIndex = contextTracks.isEmpty ? -1 : contextTracks.length - 1;
-    }
-
-    var shuffleOrder = saved.shuffleOrder;
-    if (saved.shuffle && shuffleOrder.length != contextTracks.length) {
-      shuffleOrder = _makeShuffleOrder(
-        contextTracks.length,
-        max(0, contextIndex),
-      );
-    }
-
-    state = PlayerQueueState(
+    state = PlayerQueueState.restored(
+      saved,
       current: current,
-      fromManualQueue: saved.fromManualQueue,
-      context: contextTracks,
-      contextName: saved.contextName,
-      contextIndex: contextIndex,
-      manualQueue: manualTracks,
-      shuffle: saved.shuffle,
-      shuffleOrder: shuffleOrder,
-      repeat: RepeatMode
-          .values[saved.repeatIndex.clamp(0, RepeatMode.values.length - 1)],
+      contextTracks: contextTracks,
+      manualTracks: manualTracks,
     );
 
     _watchCurrent(current);
@@ -481,19 +551,40 @@ class PlayerController extends Notifier<PlayerQueueState> {
     if (!await trackFileExists(current)) return;
 
     _playsBooked = 0;
+    final generation = _loadGeneration;
     await _handler.loadTrack(current, autoPlay: false);
     final target = Duration(milliseconds: saved.positionMs);
     if (target > Duration.zero) {
       // Seek once the media is actually loaded. A position at the very end
       // (the app closed as the track finished) would park mpv at
       // end-of-file, where play does nothing — start the track over instead.
-      _handler.player.stream.duration.firstWhere((d) => d > Duration.zero).then(
-        (duration) async {
-          if (target < duration - const Duration(seconds: 1)) {
-            await _handler.seek(target);
-          }
-        },
-      ).ignore();
+      Future<void> seekRestoredPosition(Duration duration) async {
+        if (!ref.mounted ||
+            generation != _loadGeneration ||
+            state.current?.id != current.id) {
+          return;
+        }
+        if (target < duration - const Duration(seconds: 1)) {
+          await _handler.seek(target);
+        }
+        await _widgets.update(
+          track: state.current,
+          playing: _handler.playing,
+          positionMs: _handler.position.inMilliseconds,
+        );
+      }
+
+      // Duration may already have been emitted before open() returned. A
+      // broadcast-only listener here would miss it and restore at zero.
+      final known = _handler.player.state.duration;
+      if (known > Duration.zero) {
+        await seekRestoredPosition(known);
+      } else {
+        _handler.player.stream.duration
+            .firstWhere((d) => d > Duration.zero)
+            .then(seekRestoredPosition)
+            .ignore();
+      }
     }
   }
 
@@ -589,6 +680,7 @@ class PlayerController extends Notifier<PlayerQueueState> {
   }
 
   Future<void> _loadAndPlay(Track track, {bool play = true}) async {
+    _loadGeneration++;
     if (!await trackFileExists(track)) {
       ref.read(playerMessageProvider.notifier).state =
           'File missing: ${track.title} — skipped';
@@ -638,12 +730,6 @@ class PlayerController extends Notifier<PlayerQueueState> {
 
   int? _nextContextIndex(PlayerQueueState s, {required bool wrap}) {
     if (s.context.isEmpty) return null;
-    if (s.fromManualQueue) {
-      // Resume the context at the track it was paused on.
-      return s.contextIndex >= 0 && s.contextIndex < s.context.length
-          ? s.contextIndex
-          : 0;
-    }
     if (s.shuffle && s.shuffleOrder.length == s.context.length) {
       final pos = s.shuffleOrder.indexOf(s.contextIndex);
       if (pos < 0) return s.shuffleOrder.isEmpty ? null : s.shuffleOrder[0];
